@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Store Binder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a phone-first work tool. One column, big touch targets, status told by colour + shape. */
+:root{
+  --bg:#f3f4f1; --surface:#ffffff; --surface2:#e9ebe6; --ink:#16201c; --muted:#5d6a64; --line:#d5d9d2;
+  --accent:#0d5c4b; --accent-ink:#ffffff; --accent-soft:#dcebe5;
+  --ok:#1f7a45; --ok-soft:#dff1e5; --warn:#a15c00; --warn-soft:#fbecd2; --bad:#b3261e; --bad-soft:#fadfdc;
+  --font:"IBM Plex Sans","IBM Plex Sans Arabic",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#111614; --surface:#1a211e; --surface2:#242d29; --ink:#e9eee9; --muted:#9aa8a1; --line:#334039;
+    --accent:#4fc3a5; --accent-ink:#06231b; --accent-soft:#1d3a32;
+    --ok:#62c98a; --ok-soft:#173524; --warn:#f0b35a; --warn-soft:#3b2c12; --bad:#ff8a80; --bad-soft:#42201d;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#111614; --surface:#1a211e; --surface2:#242d29; --ink:#e9eee9; --muted:#9aa8a1; --line:#334039;
+  --accent:#4fc3a5; --accent-ink:#06231b; --accent-soft:#1d3a32;
+  --ok:#62c98a; --ok-soft:#173524; --warn:#f0b35a; --warn-soft:#3b2c12; --bad:#ff8a80; --bad-soft:#42201d;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+h1,h2,h3{margin:0;text-wrap:balance;line-height:1.2}
+h1{font-size:1.5rem;font-weight:700} h2{font-size:1.15rem;font-weight:600} h3{font-size:1rem;font-weight:600}
+p{margin:0}
+.num{font-variant-numeric:tabular-nums}
+#app{max-width:760px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;padding-bottom:84px}
+.top{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.top .who{flex:1;min-width:0}
+.top .who b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .who span{color:var(--muted);font-size:.82rem}
+.pill{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-weight:600;font-size:.9rem;min-height:40px}
+main{padding:16px;display:flex;flex-direction:column;gap:16px;flex:1}
+.banner{padding:10px 14px;border-radius:var(--r);font-size:.9rem;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.stack{display:flex;flex-direction:column;gap:10px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.muted{color:var(--muted)} .small{font-size:.85rem}
+.sec{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:4px}
+.sec span{color:var(--muted);font-size:.85rem}
+.btn{border:0;border-radius:12px;padding:14px 18px;font-weight:600;background:var(--accent);color:var(--accent-ink);min-height:52px}
+.btn.alt{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+.btn.soft{background:var(--accent-soft);color:var(--accent)}
+.btn.bad{background:var(--bad-soft);color:var(--bad)}
+.btn.sm{padding:8px 12px;min-height:40px;font-size:.9rem;border-radius:10px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.task{display:flex;gap:12px;align-items:center;width:100%;text-align:start;background:var(--surface);border:1px solid var(--line);border-inline-start:6px solid var(--line);border-radius:var(--r);padding:14px;min-height:64px}
+.task.done{border-inline-start-color:var(--ok)} .task.late{border-inline-start-color:var(--bad)} .task.due{border-inline-start-color:var(--warn)}
+.task b{display:block} .task small{color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:.78rem;font-weight:600;white-space:nowrap;background:var(--surface2);color:var(--muted)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)} .chip.bad{background:var(--bad-soft);color:var(--bad)} .chip.warn{background:var(--warn-soft);color:var(--warn)} .chip.acc{background:var(--accent-soft);color:var(--accent)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;text-align:start;min-height:84px;display:flex;flex-direction:column;justify-content:space-between;gap:8px}
+.tile .let{font-weight:700;color:var(--accent);font-size:.8rem;letter-spacing:.04em}
+.tile b{font-weight:600;line-height:1.25}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.kpi b{display:block;font-size:1.7rem;font-weight:700;line-height:1.1} .kpi span{color:var(--muted);font-size:.8rem}
+.bar{height:8px;border-radius:99px;background:var(--surface2);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok);border-radius:99px}
+nav.tabs{position:fixed;bottom:0;left:0;right:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom)}
+nav.tabs div{display:flex;width:100%;max-width:760px}
+nav.tabs button{flex:1;border:0;background:none;padding:10px 2px 12px;font-size:.74rem;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:4px;min-height:60px}
+nav.tabs button svg{width:22px;height:22px}
+nav.tabs button.on{color:var(--accent)}
+/* wizard */
+.wiz{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column}
+.wiz header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.wiz header .t{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wiz .prog{height:6px;background:var(--surface2)} .wiz .prog i{display:block;height:100%;background:var(--accent);transition:width .2s}
+.wiz .body{flex:1;overflow:auto;padding:22px 18px;display:flex;flex-direction:column;gap:18px;max-width:760px;width:100%;margin:0 auto}
+.wiz .q{font-size:1.55rem;font-weight:600;line-height:1.25;text-wrap:balance}
+.wiz .q.long{font-size:1.2rem}
+.wiz .hint{color:var(--muted)}
+.wiz footer{display:flex;gap:10px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);max-width:760px;width:100%;margin:0 auto}
+.wiz footer .btn{flex:1}
+.big{width:100%;font-size:1.35rem;padding:16px;border-radius:14px;border:2px solid var(--line);background:var(--surface);min-height:64px}
+textarea.big{min-height:190px;resize:vertical;line-height:1.4}
+.big:focus{border-color:var(--accent);outline:0}
+.opts{display:grid;gap:10px}
+.opts.two{grid-template-columns:1fr 1fr}
+.opt{border:2px solid var(--line);background:var(--surface);border-radius:14px;padding:16px;font-size:1.15rem;font-weight:600;min-height:64px;text-align:center}
+.opt.huge{font-size:1.6rem;min-height:120px}
+.opt.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.opt.yes.on{border-color:var(--ok);background:var(--ok-soft);color:var(--ok)}
+.opt.no.on{border-color:var(--bad);background:var(--bad-soft);color:var(--bad)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:.85rem;font-weight:600;color:var(--muted)}
+.in{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);min-height:46px}
+.list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.list>*{padding:12px 14px;border-top:1px solid var(--line)} .list>*:first-child{border-top:0}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:320px;margin:0 auto}
+.pad button{font-size:1.5rem;font-weight:600;min-height:64px;border-radius:14px;border:1px solid var(--line);background:var(--surface)}
+.dots{display:flex;gap:12px;justify-content:center} .dots i{width:16px;height:16px;border-radius:50%;border:2px solid var(--muted)} .dots i.on{background:var(--accent);border-color:var(--accent)}
+.days{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.days button{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:8px 12px;min-width:64px;text-align:center}
+.days button b{display:block;font-size:1.1rem} .days button span{font-size:.72rem;color:var(--muted)}
+.days button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)} .days button.on span{color:var(--accent-ink)}
+.pages{display:flex;flex-direction:column;gap:12px}
+.pages img{max-width:100%;border:1px solid var(--line);border-radius:6px;background:#fff}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:40;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:600;max-width:90%}
+.modal{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}
+.modal .sheet{background:var(--bg);width:100%;max-width:760px;max-height:88%;overflow:auto;border-radius:18px 18px 0 0;padding:18px;display:flex;flex-direction:column;gap:12px}
+.score{font-size:3rem;font-weight:700;line-height:1}
+table.t{width:100%;border-collapse:collapse;font-size:.9rem} table.t td,table.t th{padding:8px 6px;border-top:1px solid var(--line);text-align:start;vertical-align:top} table.t th{color:var(--muted);font-weight:600;border-top:0}
+.scroll{overflow-x:auto}
+[dir="rtl"] .flip{transform:scaleX(-1)}
+@media (max-width:400px){.kpis{grid-template-columns:1fr 1fr 1fr}.wiz .q{font-size:1.35rem}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app"><main><div class="card"><b>Loading…</b></div></main></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script>
+
+"use strict";
+/* ===================== helpers ===================== */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pad2 = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const today = () => ymd(new Date());
+const nowHM = () => { const d = new Date(); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const parseD = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = parseD(s); d.setDate(d.getDate() + n); return ymd(d); };
+const ymOf = s => s.slice(0, 7);
+const MON = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DOW_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+const fmtD = s => { if (!s) return ""; const [y, m, d] = s.split("-"); return `${d}.${m}.${y}`; };       // printed on forms
+const monthLabel = ym => { const [y, m] = ym.split("-"); return `${MON[+m - 1]} ${y}`; };
+const weekStart = s => addDays(s, -parseD(s).getDay());                                                  // Sunday
+const weekOfMonth = s => Math.min(5, Math.ceil(+s.slice(8, 10) / 7));
+const quarterOf = s => `${s.slice(0, 4)}-Q${Math.floor((+s.slice(5, 7) - 1) / 3) + 1}`;
+const rid = () => Math.random().toString(36).slice(2, 10);
+const num = v => { const n = parseFloat(String(v ?? "").replace(/,/g, "")); return isFinite(n) ? n : null; };
+const money = v => { const n = num(v); return n === null ? String(v ?? "") : n.toLocaleString("en-US", { maximumFractionDigits: 2 }); };
+const clone = o => JSON.parse(JSON.stringify(o));
+function deepMerge(a, b) {
+  for (const k of Object.keys(b)) {
+    if (b[k] && typeof b[k] === "object" && !Array.isArray(b[k]) && a[k] && typeof a[k] === "object" && !Array.isArray(a[k])) deepMerge(a[k], b[k]);
+    else a[k] = b[k];
+  }
+  return a;
+}
+
+/* ===================== language ===================== */
+let LANG = "en";
+try { LANG = localStorage.getItem("sb-lang") || "en"; } catch (e) {}
+const STR = {
+  appName: ["Store Binder", "ملف المتجر"],
+  loading: ["Loading…", "جارٍ التحميل…"],
+  whoAreYou: ["Who is signing in?", "من يسجّل الدخول؟"],
+  enterPin: ["Enter your PIN", "أدخل الرقم السري"],
+  firstPin: ["First time? Your PIN is 0000", "أول مرة؟ رقمك السري هو 0000"],
+  notZeros: ["Choose a PIN that is not 0000.", "اختر رقماً غير 0000."],
+  newPin: ["Now choose your own 4-digit PIN", "اختر رقماً سرياً من 4 أرقام"],
+  repeatPin: ["Type it again", "أعد كتابته"],
+  pinMismatch: ["The two PINs did not match. Try again.", "الرقمان غير متطابقين. حاول مرة أخرى."],
+  wrongPin: ["Wrong PIN. Try again.", "الرقم السري خطأ. حاول مرة أخرى."],
+  back: ["Back", "رجوع"], next: ["Next", "التالي"], skip: ["Skip", "تخطي"], save: ["Save", "حفظ"], finish: ["Finish", "إنهاء"],
+  cancel: ["Cancel", "إلغاء"], close: ["Close", "إغلاق"], yes: ["Yes", "نعم"], no: ["No", "لا"], na: ["N/A", "لا ينطبق"],
+  done: ["Done", "تم"], notDone: ["Not done", "لم يتم"], late: ["Late", "متأخر"], dueBy: ["Due by", "قبل"], open: ["Open", "مفتوح"],
+  myTasks: ["My tasks today", "مهامي اليوم"], openTasks: ["Not assigned to anyone", "غير مسندة لأحد"], noTasks: ["Nothing assigned to you today.", "لا توجد مهام مسندة لك اليوم."],
+  logSomething: ["Something happened? Log it", "حدث شيء؟ سجّله"], allForms: ["All forms", "كل النماذج"],
+  home: ["Home", "الرئيسية"], forms: ["Forms", "النماذج"], records: ["Records", "السجلات"], today: ["Today", "اليوم"], plan: ["Plan", "الخطة"],
+  print: ["Print", "طباعة"], more: ["More", "المزيد"], binder: ["Binder check", "فحص الملف"], review: ["Weekly review", "المراجعة الأسبوعية"],
+  audit: ["Audit simulator", "محاكي التدقيق"], config: ["Settings", "الإعدادات"], signOut: ["Sign out", "تسجيل الخروج"],
+  viewAs: ["View as a team member", "العرض كأحد أعضاء الفريق"], backToMe: ["Back to my view", "العودة إلى حسابي"],
+  saved: ["Saved", "تم الحفظ"], typeHere: ["Type here", "اكتب هنا"], optional: ["Optional", "اختياري"], required: ["This one is needed", "هذا الحقل مطلوب"],
+  me: ["Me", "أنا"], other: ["Other", "أخرى"], add: ["Add", "إضافة"], edit: ["Edit", "تعديل"], del: ["Delete", "حذف"], addEntry: ["Add entry", "إضافة سجل"],
+  date: ["Date", "التاريخ"], time: ["Time", "الوقت"], note: ["Note", "ملاحظة"], whyNot: ["Why not? (short note)", "لماذا؟ (ملاحظة قصيرة)"],
+  confirmSign: ["Confirm and complete", "تأكيد وإكمال"], allAnswered: ["All questions answered", "تمت الإجابة على جميع الأسئلة"],
+  part: ["Your part", "الجزء الخاص بك"], waiting: ["Waiting for", "بانتظار"], takeOver: ["Take over this part", "استلام هذا الجزء"],
+  localOnly: ["Not connected to the shared store data. What you enter is kept on this device only.", "غير متصل ببيانات المتجر المشتركة. ما تدخله يُحفظ على هذا الجهاز فقط."],
+  readOnly: ["You can view, but your account cannot save. Ask the store manager to give you Contributor access.", "يمكنك العرض فقط. اطلب من مدير المتجر صلاحية المساهم."],
+  nothingYet: ["Nothing here yet.", "لا يوجد شيء بعد."], entries: ["entries", "سجلات"], item: ["Item", "صنف"], addItem: ["Add item", "إضافة صنف"],
+  pasteList: ["Paste a list", "لصق قائمة"], count: ["Count", "العدد"], system: ["System", "النظام"], lang: ["العربية", "English"],
+  onDuty: ["Working this day", "يعمل هذا اليوم"], assignTo: ["Assigned to", "مسندة إلى"], nobody: ["Nobody yet", "لا أحد بعد"],
+};
+const T = k => (STR[k] ? STR[k][LANG === "ar" ? 1 : 0] : k);
+const L = o => (o == null ? "" : typeof o === "string" ? o : (LANG === "ar" && o.ar) || o.en || "");
+function setLang(l) { LANG = l; try { localStorage.setItem("sb-lang", l); } catch (e) {} document.documentElement.lang = l; document.documentElement.dir = l === "ar" ? "rtl" : "ltr"; }
+
+/* ===================== roles ===================== */
+const ROLES = {
+  sm: { en: "Store Manager", ar: "مدير المتجر" }, dsm: { en: "Deputy Store Manager", ar: "نائب مدير المتجر" },
+  sc: { en: "Stock Controller", ar: "مراقب المخزون" }, ss: { en: "Senior Sales", ar: "بائع أول" }, sa: { en: "Sales", ar: "مبيعات" },
+};
+const isMgrRole = r => r === "sm" || r === "dsm";
+
+/* ===================== state + data layer ===================== */
+const S = { mode: "loading", canWrite: true, cfg: null, recs: new Map(), plans: {}, audits: {}, binder: {}, reviews: {}, months: new Set(), ready: false };
+let DB = null, DOWNLOADS = null;
+const LS_KEY = "sb-local-v1";
+const listeners = [];
+function notify() { listeners.forEach(f => { try { f(); } catch (e) { console.error(e); } }); }
+
+function lsLoad() { try { return JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch (e) { return null; } }
+function lsSave() {
+  if (S.mode !== "local") return;
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ cfg: S.cfg, recs: [...S.recs.entries()], plans: S.plans, audits: S.audits, binder: S.binder, reviews: S.reviews })); } catch (e) {}
+}
+function writeFail(e) { console.error("write failed", e); if (e && e.code === "invalid_argument") { S.canWrite = false; } toast(LANG === "ar" ? "تعذّر الحفظ. حاول مرة أخرى." : "Could not save. Please try again."); notify(); }
+
+async function dataInit() {
+  let db = null;
+  if (window.claude && typeof window.claude.use === "function") {
+    try { db = await Promise.race([window.claude.use("db"), new Promise(r => setTimeout(() => r(null), 11000))]); } catch (e) { db = null; }
+    try { DOWNLOADS = await Promise.race([window.claude.use("downloads"), new Promise(r => setTimeout(() => r(null), 4000))]); } catch (e) { DOWNLOADS = null; }
+    try { const u = await Promise.race([window.claude.use("user"), new Promise(r => setTimeout(() => r(null), 4000))]); if (u) { const c = await u.can("data.write"); if (c === false) S.canWrite = false; } } catch (e) {}
+  }
+  if (!db && window.SB_FIREBASE && window.SB_FIREBASE.projectId && window.firebase) {      // the GitHub copy keeps its data in Firebase
+    try { firebase.initializeApp(window.SB_FIREBASE); const fs = firebase.firestore(); const cl = d => JSON.parse(JSON.stringify(d));
+      const wrap = r => ({ onSnapshot: (n, e) => r.onSnapshot(n, e), get: () => r.get(), set: d => r.set(cl(d)), update: d => r.set(cl(d), { merge: true }), delete: () => r.delete() });
+      db = { doc: p => wrap(fs.doc(p)), collection: p => fs.collection(p) }; } catch (e) { console.error("firebase", e); db = null; }
+  }
+  if (!db) {
+    S.mode = "local";
+    const d = lsLoad();
+    if (d) { S.cfg = d.cfg; S.recs = new Map(d.recs || []); S.plans = d.plans || {}; S.audits = d.audits || {}; S.binder = d.binder || {}; S.reviews = d.reviews || {}; }
+    S.ready = true; notify(); return;
+  }
+  DB = db; S.mode = "cloud";
+  const timer = setTimeout(() => { if (!S.ready) { S.slow = true; notify(); } }, 10000);
+  const onErr = e => { console.error("db", e); S.dbError = e && e.code; notify(); };
+  db.doc("cfg/main").onSnapshot(s => { S.cfg = s.exists ? clone(s.data()) : null; S.cfgSeen = true; if (!s.metadata.fromCache || s.exists) { S.ready = true; clearTimeout(timer); } notify(); }, onErr);
+  const t = today(); const m1 = addDays(t.slice(0, 8) + "01", -1); const months = [ymOf(t), ymOf(m1), ymOf(addDays(m1.slice(0, 8) + "01", -1))];
+  months.forEach(m => S.months.add(m));
+  db.collection("rec").where("ym", "in", months).onSnapshot(q => {
+    for (const [id, r] of [...S.recs]) if (months.includes(r.ym)) S.recs.delete(id);
+    q.docs.forEach(d => S.recs.set(d.id, clone(d.data()))); notify();
+  }, onErr);
+  db.collection("plan").where("date", ">=", addDays(t, -10)).onSnapshot(q => { q.docs.forEach(d => { S.plans[d.id] = clone(d.data()); }); notify(); }, onErr);
+  db.collection("audit").onSnapshot(q => { S.audits = {}; q.docs.forEach(d => { S.audits[d.id] = clone(d.data()); }); notify(); }, onErr);
+  db.collection("binder").onSnapshot(q => { S.binder = {}; q.docs.forEach(d => { S.binder[d.id] = clone(d.data()); }); notify(); }, onErr);
+  db.collection("review").onSnapshot(q => { S.reviews = {}; q.docs.forEach(d => { S.reviews[d.id] = clone(d.data()); }); notify(); }, onErr);
+}
+async function loadMonth(ym) {             // older months, read once when asked for
+  if (S.mode !== "cloud" || S.months.has(ym)) return;
+  S.months.add(ym);
+  try { const q = await DB.collection("rec").where("ym", "==", ym).get(); q.docs.forEach(d => S.recs.set(d.id, clone(d.data()))); } catch (e) { S.months.delete(ym); console.error(e); }
+}
+const queues = {};                          // one write at a time per document
+function qWrite(path, fn) { const p = (queues[path] || Promise.resolve()).then(fn).catch(writeFail); queues[path] = p; return p; }
+
+const Data = {
+  saveCfg(patch) {                          // merge into settings
+    const existed = !!S.cfg; S.cfg = deepMerge(S.cfg || {}, clone(patch)); lsSave(); notify();
+    if (S.mode === "cloud") return qWrite("cfg/main", () => existed ? DB.doc("cfg/main").update(patch) : DB.doc("cfg/main").set(S.cfg));
+  },
+  setCfg(cfg) { S.cfg = clone(cfg); lsSave(); notify(); if (S.mode === "cloud") return qWrite("cfg/main", () => DB.doc("cfg/main").set(cfg)); },
+  saveRec(id, rec) { rec.ym = ymOf(rec.date); rec.upd = Date.now(); S.recs.set(id, clone(rec)); lsSave(); notify(); if (S.mode === "cloud") return qWrite("rec/" + id, () => DB.doc("rec/" + id).set(rec)); },
+  patchRec(id, base, patch) {               // create if missing, otherwise merge (used when several people fill one checklist)
+    const cur = S.recs.get(id);
+    if (!cur) { const rec = deepMerge(clone(base), clone(patch)); return Data.saveRec(id, rec); }
+    patch.upd = Date.now(); deepMerge(cur, clone(patch)); lsSave(); notify();
+    if (S.mode === "cloud") return qWrite("rec/" + id, () => DB.doc("rec/" + id).update(patch));
+  },
+  delRec(id) { S.recs.delete(id); lsSave(); notify(); if (S.mode === "cloud") return qWrite("rec/" + id, () => DB.doc("rec/" + id).delete()); },
+  savePlan(date, plan) { plan.date = date; S.plans[date] = clone(plan); lsSave(); notify(); if (S.mode === "cloud") return qWrite("plan/" + date, () => DB.doc("plan/" + date).set(plan)); },
+  saveDoc(col, id, doc) { S[col === "audit" ? "audits" : col === "review" ? "reviews" : "binder"][id] = clone(doc); lsSave(); notify(); if (S.mode === "cloud") return qWrite(col + "/" + id, () => DB.doc(col + "/" + id).set(doc)); },
+  delDoc(col, id) { delete S[col === "audit" ? "audits" : col === "review" ? "reviews" : "binder"][id]; lsSave(); notify(); if (S.mode === "cloud") return qWrite(col + "/" + id, () => DB.doc(col + "/" + id).delete()); },
+};
+const recsOf = (form, from, to) => [...S.recs.entries()].filter(([, r]) => r.form === form && (!from || r.date >= from) && (!to || r.date <= to))
+  .map(([id, r]) => ({ id, ...r })).sort((a, b) => (a.date + (a.data && a.data.time || "") + a.at).localeCompare(b.date + (b.data && b.data.time || "") + b.at));
+
+/* ===================== people ===================== */
+let ME = null, REAL = null;                 // signed-in staff id; REAL is set while a manager previews someone else
+const staffList = (all) => Object.entries((S.cfg && S.cfg.staff) || {}).map(([id, s]) => ({ id, ...s })).filter(s => all || s.active !== false).sort((a, b) => (a.ord || 99) - (b.ord || 99) || a.name.localeCompare(b.name));
+const staff = id => { const s = S.cfg && S.cfg.staff && S.cfg.staff[id]; return s ? { id, ...s } : null; };
+const shortName = id => { const s = staff(id); return s ? (s.short || s.name) : (id || ""); };
+const nameId = id => { const s = staff(id); return s ? `${s.short || s.name} (${id})` : (id || ""); };   // how a person is printed on a form
+const iAmMgr = () => { const s = staff(ME); return !!s && isMgrRole(s.role); };
+const storeLine = () => { const st = (S.cfg && S.cfg.store) || {}; return [st.code, st.name].filter(Boolean).join(" - "); };
+async function pinHash(id, pin) {
+  const txt = `${id}:${pin}:sb`;
+  try { const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt)); return [...new Uint8Array(b)].slice(0, 10).map(x => x.toString(16).padStart(2, "0")).join(""); }
+  catch (e) { let h = 5381; for (const c of txt) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0; return "x" + h.toString(16); }
+}
+
+/* ===================== small UI bits ===================== */
+let toastT = null;
+function toast(msg) { let t = $(".toast"); if (!t) { t = document.createElement("div"); t.className = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); } t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
+function ask(title, body, okLabel, cb, danger) {          // in-page confirm (browser dialogs are not available here)
+  const m = document.createElement("div"); m.className = "modal";
+  m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><h2>${esc(title)}</h2>${body ? `<p class="muted">${esc(body)}</p>` : ""}<div class="row"><button class="btn alt grow" id="askNo">${T("cancel")}</button><button class="btn ${danger ? "bad" : ""} grow" id="askYes">${esc(okLabel)}</button></div></div>`;
+  document.body.appendChild(m);
+  $("#askNo", m).onclick = () => m.remove(); $("#askYes", m).onclick = () => { m.remove(); cb(); };
+}
+const ICON = {
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
+  forms: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+  plan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  print: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3h10v5"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v7H7z"/></svg>',
+  more: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+  rec: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
+  chev: '<svg class="flip" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+};
+
+/* ===================== form definitions ===================== */
+const q = (en, ar) => ({ en, ar });
+const o = (v, en, ar) => ({ v, en, ar: ar || en });
+const DEPTS = [o("brand", "Brand Manager", "مدير العلامة"), o("retail", "Retail Management Division", "إدارة التجزئة"), o("finance", "Finance Department", "المالية"), o("hr", "HR", "الموارد البشرية"),
+  o("logistics", "Logistics", "اللوجستيات"), o("facility", "Facility Management", "إدارة المرافق"), o("legal", "Legal", "القانونية"), o("marketing", "Marketing", "التسويق")];
+const INC_TYPES = {
+  customer: [o("damaged", "Damaged inventory", "تلف بضاعة"), o("theft", "Theft / burglary attempt", "سرقة أو محاولة سرقة"), o("argument", "Argument / incident / assault", "مشادة أو اعتداء"), o("health", "Health condition emergency", "حالة صحية طارئة"), o("forged", "Forged currency or stolen card", "عملة مزورة أو بطاقة مسروقة"), o("others", "Others", "أخرى")],
+  employee: [o("damaged", "Damaged inventory", "تلف بضاعة"), o("theft", "Theft / burglary attempt", "سرقة أو محاولة سرقة"), o("argument", "Argument / incident / assault", "مشادة أو اعتداء"), o("health", "Health condition emergency", "حالة صحية طارئة"), o("others", "Others", "أخرى")],
+  store: [o("eod", "End of day discrepancies", "فروقات نهاية اليوم"), o("stock", "Stock discrepancies", "فروقات المخزون"), o("cash", "Cash discrepancies", "فروقات النقد"), o("firedrill", "Fire drill / evacuation", "تمرين إخلاء"), o("fire", "Fire in store", "حريق في المتجر"), o("lostkeys", "Lost keys", "فقدان المفاتيح"), o("others", "Others", "أخرى")],
+};
+const OPENING = [
+  ["admin", "STAFF CLOCKED IN ON BIOMETRICS & MANUAL ATTENDANCE SIGNED", "تم تسجيل حضور الموظفين بالبصمة وتوقيع كشف الحضور اليدوي"],
+  ["floor", "PRODUCT AND WINDOWS CORRECTLY DISPLAYED FOLLOWING UPDATED BRAND STANDARDS", "المنتجات والواجهات معروضة حسب معايير العلامة المحدّثة"],
+  ["floor", "CLEANER COMPLETED ALL TASKS INCLUDING VACUUMING, DUSTING, WIPING OF GLASS WINDOWS", "أنهى عامل النظافة جميع المهام: الكنس ومسح الغبار وتنظيف الزجاج"],
+  ["floor", "ALL PRODUCT FREE OF DUST AND FINGER MARKS", "جميع المنتجات خالية من الغبار وبصمات الأصابع"],
+  ["floor", "CLEAN THE DOOR AND HANDLE WITH ETHANOL, SINK AND ALL METALS, ENSURING ALL ARE FREE FROM MARKS", "تنظيف الباب والمقبض بالإيثانول، والمغسلة وجميع المعادن، والتأكد من خلوها من العلامات"],
+  ["floor", "REPLENISHMENT CHECKED AND ANY MISSING ITEMS REPLACED", "تم فحص التعبئة واستبدال أي أصناف ناقصة"],
+  ["floor", "ALL PRODUCT NEATLY DISPLAYED WITH PRODUCT NAME AND NEATLY ALIGNED", "جميع المنتجات معروضة بترتيب مع اسم المنتج ومصفوفة جيداً"],
+  ["admin", "CCTV CHECKED TO BE WORKING, ANY ISSUE HIGHLIGHTED TO MANAGEMENT", "تم التأكد من عمل كاميرات المراقبة وإبلاغ الإدارة بأي مشكلة"],
+  ["admin", "ALL STAFF WEARING CORRECT UNIFORM LATEST 9:00AM", "جميع الموظفين بالزي الصحيح قبل الساعة 9:00 صباحاً"],
+  ["floor", "POS FREE OF CLUTTER AND PRICELIST DISPLAYED", "منطقة الكاشير مرتبة وقائمة الأسعار معروضة"],
+  ["admin", "CHECK INTERNET FOR MEMO OR HR UPDATES", "مراجعة البريد/الإنترنت للتعاميم أو تحديثات الموارد البشرية"],
+  ["cash", "COMPLETE CASH OPENING PROCEDURE (COUNT PETTY CASH AND FLOAT CASH, RECOUNT PREVIOUS DAY CASH VS. DEPOSIT SLIP BEFORE PLACING IN PADDED BAG & PROPERLY SEALED). ARRANGE/FILE CASH MEMOS & DEPOSIT SLIPS. REPORT ANY DISCREPANCY TO AM/FINANCE.", "إكمال إجراءات افتتاح النقد: عدّ العهدة والفكة، إعادة عدّ نقد أمس مقابل قسيمة الإيداع قبل وضعه في الكيس المختوم، وحفظ القسائم. إبلاغ مدير المنطقة/المالية بأي فرق."],
+  ["admin", "HUDDLE FORM PREPARED & COMPLETED FULLY", "تم تجهيز نموذج الاجتماع اليومي وإكماله"],
+  ["admin", "FIRE EXITS ARE CLEAR OF OBSTRUCTIONS", "مخارج الطوارئ خالية من العوائق"],
+  ["cash", "ENSURE STORE KEYS AND SAFE KEYS ARE KEPT IN LOCKED CABINET", "مفاتيح المتجر والخزنة محفوظة في خزانة مقفلة"],
+  ["admin", "ALL GARBAGE BAGS CHECKED BY STAFF BEFORE THE CLEANER DISPOSES", "فحص الموظفين جميع أكياس النفايات قبل أن يتخلص منها عامل النظافة"],
+  ["admin", "CLEANER UPDATED ON VISITOR LOG", "تم تسجيل عامل النظافة في سجل الزوار"],
+  ["stock", "DELIVERIES & SHIPMENTS CHECKED & COMPLETED BY 10AM", "فحص الشحنات والتوريدات وإكمالها قبل 10 صباحاً"],
+  ["admin", "MAINTENANCE ISSUES HIGHLIGHTED TO MAINTENANCE TEAMS", "إبلاغ فريق الصيانة بمشاكل الصيانة"],
+  ["stock", "DAILY RANDOM STOCK CHECK LOG COMPLETED AND FILED (20 SKU TO BE COUNTED AND ONCE A MONTH FULL STOCK COUNT)", "إكمال وحفظ سجل الجرد العشوائي اليومي (عدّ 20 صنفاً)"],
+];
+const CLOSING = [
+  ["floor", "ALL DISPLAY PRODUCT PERFECTLY ALIGNED AND CORRECT LOCATIONS", "جميع منتجات العرض مصفوفة وفي أماكنها الصحيحة"],
+  ["floor", "ALL PRODUCTS REPLENISHED FOR THE NEXT DAY", "تمت تعبئة جميع المنتجات لليوم التالي"],
+  ["floor", "WINDOWS CORRECTLY DISPLAYED", "الواجهات معروضة بشكل صحيح"],
+  ["floor", "SHOPPING BAGS REPLENISHED", "تمت تعبئة أكياس التسوق"],
+  ["floor", "POS CLUTTER FREE", "منطقة الكاشير مرتبة"],
+  ["cash", "PREPARE THE DAILY SALES REPORT AND TALLY WITH CASH ON HAND, CREDIT CARD Z-REPORT, FOREIGN CURRENCY AND REPORT ANY DISCREPANCIES TO FINANCE. ENSURE THE CASH IS WITH A BANK DEPOSIT SLIP READY FOR DEPOSIT THE NEXT DAY AND PREPARE CASH FLOAT THEN LOCKED INSIDE SAFE - 2 STAFF TO VERIFY AND SIGN VAULT OPEN LOG.", "إعداد تقرير المبيعات اليومي ومطابقته مع النقد وتقرير البطاقات وإبلاغ المالية بأي فرق. تجهيز النقد مع قسيمة الإيداع لليوم التالي وتجهيز الفكة وقفلها في الخزنة - يتحقق موظفان ويوقعان سجل فتح الخزنة."],
+  ["cash", "SAFE VAULT PROPERLY CLOSED AND LOCKED", "الخزنة مغلقة ومقفلة بشكل صحيح"],
+  ["cash", "DAILY SALES REPORT SENT TO MANAGEMENT - PLEASE BE CAREFUL WITH DETAILS", "إرسال تقرير المبيعات اليومي للإدارة - انتبه للتفاصيل"],
+  ["exit", "STAFF CLOCKED OUT ON BIOMETRIC & MANUAL ATTENDANCE SIGNED", "تسجيل انصراف الموظفين بالبصمة وتوقيع كشف الحضور"],
+  ["exit", "LIGHTS & DISPLAY MONITORS, MUSIC TURNED OFF", "إطفاء الإضاءة وشاشات العرض والموسيقى"],
+  ["exit", "STAFF BAGS CHECKED UPON EXIT UNDER CCTV. MANDATORY STEP.", "فحص حقائب الموظفين عند الخروج أمام الكاميرا. خطوة إلزامية."],
+];
+const GROUPS = { floor: q("Shop floor", "صالة العرض"), cash: q("Cash and keys", "النقد والمفاتيح"), stock: q("Stock", "المخزون"), admin: q("Safety and admin", "السلامة والإدارة"), exit: q("Lock-up", "الإقفال") };
+const WEEKLY = ["Check CCTV is operational and working correctly", "Staff groomed and correct uniform is being worn", "Weekly staff locker check completed on random staff in store",
+  "Daily/monthly random stock check completed and any discrepancies reported to AM", "Any cash, sales or banking discrepancies investigated and highlighted to HO/AM", "Weekly till spot check performed (daily sales, float, petty cash all tally)",
+  "All back of house operational paperwork is filled correctly and neatly", "Discrepancy report and stock discrepancy justification note are approved and communicated to Finance / HO", "All discounts to be checked with verified ID and supporting documents",
+  "All maintenance and snags are reported to maintenance contractors and AM", "All POS equipment working correctly", "All HR / company / mall memos and communications are updated and read & signed by team in store",
+  "All fire extinguishers are updated and in correct locations in store as well as smoke alarms operating correctly", "Shopping bags, wrapping and packaging are replenished and any issues are reported to AM", "Store has an updated and filled FIRST AID box",
+  "All store accesses and keys are accounted, logged and kept in safe box", "All fire exits are clear of obstructions and store team are aware quickest store exits as well as Mall meeting points", "Stationery is sufficient and any requests raised to HO",
+  "Brand training books are available in store and being utilised for trainings", "Staff coaching and training completed", "Stock rooms & fitting room tidied, correctly signed and well managed", "Replenishment of best sellers communicated to AM",
+  "Store supplies of water, coffee and other is sufficient", "Negative stock report reviewed by SM on a weekly basis, high negative sales to be reported to AM", "Manual discounts to be checked and validated by SM",
+  "All cancelled invoices to be checked and validated - email proof to AM/RM to support all transactions", "SM to check all exchanges and refunds to validate stock is correct and no misuse of policy or process"];
+
+const mkItems = (arr) => arr.map((a, i) => ({ id: "i" + (i + 1), g: a[0], en: a[1], ar: a[2] }));
+const F_TIME = (k, en, ar, opt) => ({ k, t: "time", q: q(en, ar), def: opt ? "" : "now", opt });
+const FORMS = {
+  opening: { letter: "A", kind: "check", title: q("Opening Checklist", "قائمة الافتتاح"), items: mkItems(OPENING), sched: { freq: "daily", due: "10:00", who: "dsm" }, printAs: "openclose" },
+  closing: { letter: "A", kind: "check", title: q("Closing Checklist", "قائمة الإغلاق"), items: mkItems(CLOSING), sched: { freq: "daily", due: "23:30", who: "dsm" }, printAs: "openclose" },
+  huddle: { letter: "B", kind: "sheet", single: "day", title: q("Daily Huddle", "الاجتماع اليومي"), sched: { freq: "daily", due: "10:15", who: "sm" }, fields: [
+    { k: "monthTarget", t: "money", q: q("What is the month target? (SAR)", "ما هو هدف الشهر؟ (ريال)"), cfgDef: "monthTarget", opt: 1 },
+    { k: "salesY", t: "money", q: q("Sales yesterday (SAR)", "مبيعات أمس (ريال)"), opt: 1 }, { k: "todayTarget", t: "money", q: q("Today's target (SAR)", "هدف اليوم (ريال)"), opt: 1 },
+    { k: "unitsY", t: "num", q: q("Units sold yesterday", "القطع المباعة أمس"), opt: 1 }, { k: "unitsTarget", t: "num", q: q("Today's units target", "هدف القطع لليوم"), opt: 1 },
+    { k: "invY", t: "num", q: q("Invoices yesterday", "عدد فواتير أمس"), opt: 1 }, { k: "invTarget", t: "num", q: q("Today's invoice target", "هدف الفواتير لليوم"), opt: 1 },
+    { k: "uptY", t: "num", q: q("UPT yesterday", "متوسط القطع بالفاتورة أمس"), opt: 1 }, { k: "uptGoal", t: "num", q: q("UPT goal", "هدف متوسط القطع"), cfgDef: "uptGoal", opt: 1 },
+    { k: "atvY", t: "money", q: q("ATV yesterday (SAR)", "متوسط قيمة الفاتورة أمس"), opt: 1 }, { k: "atvGoal", t: "money", q: q("ATV goal (SAR)", "هدف متوسط قيمة الفاتورة"), cfgDef: "atvGoal", opt: 1 },
+    { k: "convY", t: "text", q: q("Conversion yesterday (%)", "نسبة التحويل أمس (%)"), opt: 1 }, { k: "convGoal", t: "text", q: q("Conversion goal (%)", "هدف نسبة التحويل (%)"), cfgDef: "convGoal", opt: 1 },
+    { k: "mtdSales", t: "money", q: q("Month-to-date sales (SAR)", "مبيعات الشهر حتى اليوم"), opt: 1 }, { k: "mtdAch", t: "text", q: q("Month-to-date achievement (%)", "نسبة تحقيق الشهر (%)"), opt: 1 },
+    { k: "news", t: "long", q: q("News, victories, brags, top sellers", "أخبار، إنجازات، أفضل البائعين"), hint: q("What did you sell yesterday? Who sold? Who did a great job in service?", "ماذا بعتم أمس؟ من باع؟ من قدّم خدمة ممتازة؟"), opt: 1 },
+    { k: "focus", t: "long", q: q("Key focus of the day", "تركيز اليوم"), hint: q("UPT? Cross selling? New season? Stockrooms? Transfers?", "متوسط القطع؟ البيع المتقاطع؟ الموسم الجديد؟ المخزن؟ التحويلات؟"), opt: 1 },
+    { k: "memos", t: "long", q: q("Office memos, HR updates, other", "تعاميم المكتب، تحديثات الموارد البشرية، أخرى"), opt: 1 },
+    { k: "team", t: "rows", max: 8, q: q("Staff attendance of the day", "حضور الموظفين اليوم"), rowTitle: r => shortName(r.who), seed: "duty", opt: 1, sub: [
+      { k: "who", t: "staff", q: q("Name", "الاسم") }, { k: "timing", t: "text", q: q("Timing", "الدوام") }, { k: "ysale", t: "money", q: q("Yesterday sale", "مبيعات أمس") },
+      { k: "ttarget", t: "money", q: q("Today's target", "هدف اليوم") }, { k: "mtd", t: "text", q: q("MTD target achievement %", "نسبة تحقيق الشهر %") }] },
+  ] },
+  tryon: { letter: "C", kind: "sheet", single: "day", title: q("Daily Try ON Count", "جرد أحذية التجربة اليومي"), sched: { freq: "daily", due: "23:15", who: "ss" }, dyn: "tryon" },
+  cleaner: { letter: "D", kind: "log", title: q("Cleaner Daily Log", "سجل عامل النظافة"), sched: { freq: "daily", due: "11:00", who: "sa" }, fields: [
+    { k: "name", t: "text", q: q("Cleaner's name", "اسم عامل النظافة"), remember: 1 }, { k: "designation", t: "text", q: q("Designation", "المسمى الوظيفي"), def: "Cleaner" },
+    F_TIME("timeIn", "Time in", "وقت الدخول"), F_TIME("timeOut", "Time out", "وقت الخروج", 1),
+    { k: "purpose", t: "text", q: q("Purpose of visit", "سبب الزيارة"), def: "Daily cleaning" }, { k: "checkedBy", t: "staff", q: q("Checked by", "تم الفحص بواسطة"), def: "me" }, { k: "remarks", t: "text", q: q("Remarks", "ملاحظات"), opt: 1 }] },
+  feedback: { letter: "E", kind: "sheet", title: q("Customer Feedback Form", "نموذج ملاحظات العميل"), sched: { freq: "event" }, fields: [
+    { k: "custName", t: "text", q: q("Customer name", "اسم العميل") }, { k: "contact", t: "text", q: q("Contact number", "رقم التواصل"), opt: 1 }, { k: "email", t: "text", q: q("E-mail", "البريد الإلكتروني"), opt: 1 },
+    { k: "about", t: "multi", q: q("What are the comments about?", "عن ماذا تتعلق الملاحظات؟"), opts: [o("cashier", "Cashier", "الكاشير"), o("sales", "Salesperson", "البائع"), o("mgmt", "Management", "الإدارة"), o("products", "Products", "المنتجات"), o("atmo", "Store atmosphere", "أجواء المتجر"), o("service", "Customer service", "خدمة العملاء"), o("policy", "Company policy", "سياسة الشركة"), o("other", "Other", "أخرى")] },
+    { k: "nature", t: "choice", q: q("Is it a complaint or a compliment?", "هل هي شكوى أم إشادة؟"), opts: [o("complaint", "Complaint", "شكوى"), o("compliment", "Compliment", "إشادة")] },
+    { k: "details", t: "long", q: q("Details of the comment", "تفاصيل الملاحظة") }, { k: "action", t: "long", q: q("Action taken by the store", "الإجراء المتخذ من المتجر"), opt: 1 }] },
+  smweekly: { letter: "F", kind: "check", weekly: true, mgr: true, title: q("Store Manager Weekly Checklist", "قائمة المدير الأسبوعية"), items: WEEKLY.map((en, i) => ({ id: "i" + (i + 1), g: "all", en })), sched: { freq: "weekly", dow: 4, due: "20:00", who: "sm" } },
+  keys: { letter: "G", kind: "log", title: q("Key Handover Log", "سجل تسليم المفاتيح"), sched: { freq: "event" }, fields: [
+    { k: "key", t: "choice", q: q("Which key?", "أي مفتاح؟"), opts: [o("store", "Store key", "مفتاح المتجر"), o("spare", "Store key (spare)", "مفتاح المتجر (احتياطي)"), o("safe", "Safe key", "مفتاح الخزنة"), o("other", "Backdoor or other", "الباب الخلفي أو غيره")] },
+    { k: "receivedBy", t: "staff", q: q("Who received the key?", "من استلم المفتاح؟"), def: "me" }, { k: "releasedBy", t: "staff", q: q("Who released the key?", "من سلّم المفتاح؟") },
+    { k: "returned", t: "text", q: q("Returned on (time and date)", "أُعيد في (الوقت والتاريخ)"), hint: q("Leave empty if the key is still out. You can fill this later from Records.", "اتركه فارغاً إذا لم يُعَد المفتاح بعد. يمكنك تعبئته لاحقاً من السجلات."), opt: 1 }] },
+  visitor: { letter: "H", kind: "log", title: q("Visitor Log", "سجل الزوار"), sched: { freq: "event" }, fields: [
+    { k: "name", t: "text", q: q("Visitor's name", "اسم الزائر") }, { k: "designation", t: "text", q: q("Designation", "المسمى الوظيفي") }, F_TIME("timeIn", "Time in", "وقت الدخول"), F_TIME("timeOut", "Time out", "وقت الخروج", 1),
+    { k: "purpose", t: "text", q: q("Purpose of visit", "سبب الزيارة") }, { k: "checkedBy", t: "staff", q: q("Checked by", "تم الفحص بواسطة"), def: "me" }, { k: "remarks", t: "text", q: q("Remarks", "ملاحظات"), opt: 1 }] },
+  vendor: { letter: "I", kind: "log", title: q("Vendor & Contractor Log", "سجل الموردين والمقاولين"), sched: { freq: "event" }, fields: [
+    { k: "name", t: "text", q: q("Vendor / contractor name", "اسم المورد / المقاول") }, { k: "company", t: "text", q: q("Company", "الشركة") },
+    { k: "idno", t: "text", q: q("ID number", "رقم الهوية"), hint: q("Write the number only. Do not keep a copy of the ID.", "اكتب الرقم فقط. لا تحتفظ بنسخة من الهوية."), opt: 1 },
+    F_TIME("timeIn", "Time in", "وقت الدخول"), F_TIME("timeOut", "Time out", "وقت الخروج", 1), { k: "report", t: "text", q: q("Service report number", "رقم تقرير الخدمة"), opt: 1 },
+    { k: "purpose", t: "text", q: q("Purpose of visit", "سبب الزيارة") }, { k: "staff", t: "staff", q: q("Which staff member supervised?", "أي موظف أشرف؟"), def: "me" }, { k: "remarks", t: "text", q: q("Remarks", "ملاحظات"), opt: 1 }] },
+  incident: { letter: "J", kind: "sheet", title: q("POS Incident Report", "تقرير حادثة"), sched: { freq: "event" }, fields: [
+    { k: "cat", t: "choice", q: q("Who or what is it related to?", "بمن أو بماذا تتعلق الحادثة؟"), opts: [o("customer", "Customer", "عميل"), o("employee", "Employee", "موظف"), o("store", "Store", "المتجر")] },
+    { k: "type", t: "choice", q: q("What type of incident?", "ما نوع الحادثة؟"), optsFrom: d => INC_TYPES[d.cat] || [] },
+    { k: "incDate", t: "date", q: q("Date of incident", "تاريخ الحادثة"), def: "today" }, F_TIME("incTime", "Time of incident", "وقت الحادثة"),
+    { k: "location", t: "text", q: q("Location of incident", "مكان الحادثة") }, { k: "witnesses", t: "text", q: q("Witnesses / parties involved (names)", "الشهود / الأطراف (الأسماء)"), opt: 1 },
+    { k: "info", t: "long", q: q("What happened?", "ماذا حدث؟") },
+    { k: "action", t: "long", q: q("Required action / escalation and proposed solution", "الإجراء المطلوب / التصعيد والحل المقترح"), hint: q("Management only. Staff can skip.", "للإدارة فقط. يمكن للموظف التخطي."), opt: 1 },
+    { k: "preparedBy", t: "staff", q: q("Report prepared by", "أعدّ التقرير"), def: "me" }, { k: "escalatedTo", t: "text", q: q("Escalated to (name)", "تم التصعيد إلى (الاسم)"), opt: 1 },
+    { k: "reviewed", t: "multi", q: q("Reviewed and approved by which departments?", "أي الإدارات راجعت واعتمدت؟"), opts: DEPTS, opt: 1 }] },
+  lostfound: { letter: "K", kind: "log", title: q("Lost and Found Log", "سجل المفقودات"), sched: { freq: "event" }, fields: [
+    { k: "item", t: "text", q: q("What was found?", "ما الذي وُجد؟") }, F_TIME("timeFound", "Time found", "وقت العثور"), { k: "location", t: "text", q: q("Where was it found?", "أين وُجد؟") },
+    { k: "foundBy", t: "staff", q: q("Found by", "وجده"), def: "me" }, { k: "customer", t: "text", q: q("Customer name and contact (if known)", "اسم العميل ورقم التواصل (إن عُرف)"), opt: 1 },
+    { k: "action", t: "choice", q: q("Action taken", "الإجراء المتخذ"), other: 1, opts: [o("Handed to mall management", "Handed to mall management", "سُلّم لإدارة المول"), o("Returned to customer", "Returned to customer", "أُعيد للعميل"), o("Kept in store, awaiting handover", "Kept in store, awaiting handover", "محفوظ في المتجر بانتظار التسليم")] },
+    { k: "storage", t: "text", q: q("Where is the item kept now?", "أين يُحفظ الغرض الآن؟") }] },
+  vault: { letter: "L", kind: "log", title: q("Vault Open Log", "سجل فتح الخزنة"), sched: { freq: "event" }, fields: [
+    F_TIME("time", "What time was the vault opened?", "متى فُتحت الخزنة؟"),
+    { k: "reasons", t: "multi", q: q("Why was it opened?", "لماذا فُتحت؟"), opts: [o("t_dep", "Take: cash deposit", "أخذ: نقد الإيداع"), o("t_float", "Take: cash float", "أخذ: الفكة"), o("t_petty", "Take: petty cash", "أخذ: العهدة"),
+      o("p_dep", "Put: cash deposit", "وضع: نقد الإيداع"), o("p_float", "Put: cash float", "وضع: الفكة"), o("p_petty", "Put: petty cash", "وضع: العهدة"),
+      o("pc_tailor", "Petty cash: pay the tailor", "العهدة: دفع للخياط"), o("pc_update", "Petty cash: update", "العهدة: تحديث"), o("pc_change", "Petty cash: change", "العهدة: صرف")], opt: 1 },
+    { k: "otherReason", t: "text", q: q("Any other reason? (please specify)", "سبب آخر؟ (يرجى التحديد)"), opt: 1 },
+    { k: "name", t: "staff", q: q("Who opened it?", "من فتحها؟"), def: "me" }, { k: "witness", t: "staff", q: q("Who was the witness?", "من كان الشاهد؟") }] },
+  codechange: { letter: "L", kind: "log", mgr: true, title: q("Vault Code Change Log", "سجل تغيير رمز الخزنة"), sched: { freq: "quarterly", due: "18:00", who: "sm" }, fields: [
+    { k: "sm", t: "staff", q: q("Store manager who changed the code", "مدير المتجر الذي غيّر الرمز"), def: "me", hint: q("Never type the code itself anywhere in this app.", "لا تكتب الرمز نفسه في أي مكان في هذا التطبيق.") },
+    { k: "retailMgr", t: "text", q: q("Retail manager name and ID (if present)", "اسم ورقم مدير التجزئة (إن حضر)"), opt: 1 }, { k: "remarks", t: "text", q: q("Remarks", "ملاحظات"), opt: 1 }] },
+  locker: { letter: "M", kind: "log", mgr: true, title: q("Weekly Staff Locker Check", "فحص خزائن الموظفين الأسبوعي"), sched: { freq: "weekly", dow: 1, due: "18:00", who: "dsm" }, fields: [
+    { k: "who", t: "staff", q: q("Whose locker was checked?", "خزانة من تم فحصها؟") }, F_TIME("time", "Time", "الوقت"), { k: "manager", t: "staff", q: q("Manager who checked", "المدير الذي فحص"), def: "me" },
+    { k: "obs", t: "text", q: q("Observations", "الملاحظات"), def: "Nothing to report" }] },
+  till: { letter: "N", kind: "log", mgr: true, title: q("Weekly Till Spot Check", "الفحص المفاجئ الأسبوعي للكاشير"), sched: { freq: "weekly", dow: 0, due: "18:00", who: "sm" }, fields: [
+    { k: "float", t: "money", q: q("Cash float (SAR)", "الفكة (ريال)") }, { k: "cashSale", t: "money", q: q("Cash sale (SAR)", "المبيعات النقدية (ريال)") }, { k: "card", t: "money", q: q("Card (SAR)", "البطاقات (ريال)") },
+    { k: "total", t: "money", q: q("Total sale (SAR)", "إجمالي المبيعات (ريال)"), calc: d => { const a = num(d.cashSale), b = num(d.card); return a === null || b === null ? "" : String(a + b); } },
+    { k: "fc", t: "text", q: q("Foreign currency (F/C)", "العملة الأجنبية"), opt: 1 }, { k: "excess", t: "text", q: q("Excess + or - (SAR)", "الزيادة + أو النقص - (ريال)"), def: "0" },
+    { k: "aom", t: "text", q: q("AOM name (if present)", "اسم مدير العمليات (إن حضر)"), opt: 1 }, { k: "remarks", t: "text", q: q("Remarks", "ملاحظات"), opt: 1 }] },
+  stockcheck: { letter: "O", kind: "sheet", single: "day", title: q("Daily Random Stock Check", "الجرد العشوائي اليومي"), sched: { freq: "daily", due: "13:00", who: "sc" }, fields: [
+    { k: "items", t: "rows", max: 20, min: 1, paste: ["style", "desc", "size", "sys"], q: q("Count 20 items", "عدّ 20 صنفاً"), hint: q("Add each item, or paste the list from the system (barcode, description, size, system quantity). Then type the count for each one.", "أضف كل صنف، أو الصق القائمة من النظام (الباركود، الوصف، المقاس، كمية النظام). ثم اكتب العدد لكل صنف."),
+      rowTitle: r => [r.desc || r.style, r.size].filter(Boolean).join(" · "), rowState: r => (r.phy === "" || r.phy == null ? "" : (num(r.recount ?? r.phy) === num(r.sys) ? "ok" : "bad")), sub: [
+      { k: "style", t: "text", q: q("Style number / barcode", "رقم الموديل / الباركود") }, { k: "desc", t: "text", q: q("Item description", "وصف الصنف") }, { k: "size", t: "text", q: q("Size", "المقاس") },
+      { k: "sys", t: "num", q: q("System quantity", "كمية النظام") }, { k: "phy", t: "num", q: q("Physical count", "العدد الفعلي") }, { k: "recount", t: "num", q: q("Recount (only if different)", "إعادة العدّ (فقط عند وجود فرق)"), opt: 1 }, { k: "remark", t: "text", q: q("Remark", "ملاحظة"), opt: 1 }] }] },
+  discrepancy: { letter: "Q", kind: "sheet", title: q("Stock Discrepancy Summary", "ملخص فروقات المخزون"), sched: { freq: "event" }, fields: [
+    { k: "rows", t: "rows", max: 13, min: 1, seed: "variance", q: q("Items with a discrepancy", "الأصناف التي بها فرق"), hint: q("Items with a difference in today's stock check are added for you.", "تمت إضافة الأصناف التي بها فرق في جرد اليوم تلقائياً."), rowTitle: r => r.ref, sub: [
+      { k: "ref", t: "text", q: q("Stock reference", "مرجع الصنف") }, { k: "sys", t: "num", q: q("System quantity", "كمية النظام") }, { k: "phy", t: "num", q: q("Physical quantity", "الكمية الفعلية") }, { k: "remark", t: "text", q: q("Remarks", "ملاحظات"), opt: 1 }] },
+    { k: "counters", t: "multi", staffOpts: 1, max: 3, q: q("Who performed the count?", "من قام بالعدّ؟") }, { k: "comments", t: "long", q: q("Comments", "تعليقات"), opt: 1 }] },
+  cashhandover: { letter: "R", kind: "log", title: q("Daily Cash Handover Log", "سجل تسليم النقد اليومي"), sched: { freq: "daily", due: "16:30", who: "ss" }, fields: [
+    F_TIME("time", "Time of handover", "وقت التسليم"), { k: "cash", t: "money", q: q("Cash sales (SAR)", "المبيعات النقدية (ريال)") }, { k: "cc", t: "money", q: q("Card sales (SAR)", "مبيعات البطاقات (ريال)") },
+    { k: "online", t: "money", q: q("Online sales (SAR)", "المبيعات الإلكترونية (ريال)"), def: "0" }, { k: "float", t: "money", q: q("Float cash (SAR)", "الفكة (ريال)") }, { k: "petty", t: "money", q: q("Petty cash (SAR)", "العهدة (ريال)") },
+    { k: "remarks", t: "text", q: q("Any discrepancies?", "هل توجد فروقات؟"), opt: 1 }, { k: "checkedBy", t: "staff", q: q("Checked by (handing over)", "فحصه (المسلِّم)"), def: "me" },
+    { k: "receivedBy", t: "staff", q: q("Received by", "استلمه") }, { k: "verifiedBy", t: "staff", q: q("Verified by", "تحقق منه"), opt: 1 }] },
+  banking: { letter: "S", kind: "log", title: q("Banking Deposit Log", "سجل الإيداع البنكي"), sched: { freq: "daily", due: "13:00", who: "dsm" }, fields: [
+    { k: "amount", t: "money", q: q("Cash amount (SAR)", "المبلغ النقدي (ريال)") }, F_TIME("time", "Time", "الوقت"), { k: "givenBy", t: "staff", q: q("Given by", "سلّمه"), def: "me" },
+    { k: "receivedBy", t: "text", q: q("Received by (name and staff code)", "استلمه (الاسم والرقم الوظيفي)") }, { k: "seal", t: "text", q: q("Banking seal number", "رقم ختم الكيس البنكي") }, { k: "slip", t: "text", q: q("Deposit slip number", "رقم قسيمة الإيداع") }] },
+  refund: { letter: "T", kind: "log", title: q("Return / Refund Log", "سجل المرتجعات والاسترداد"), sched: { freq: "event" }, fields: [
+    F_TIME("time", "Time", "الوقت"), { k: "invoice", t: "text", q: q("Invoice number", "رقم الفاتورة"), hint: q("A return cannot be logged without the invoice number.", "لا يمكن تسجيل مرتجع بدون رقم الفاتورة.") },
+    { k: "code", t: "text", q: q("Item code", "رمز الصنف") }, { k: "desc", t: "text", q: q("Item description", "وصف الصنف") }, { k: "qty", t: "num", q: q("Quantity", "الكمية"), def: "1" }, { k: "value", t: "money", q: q("Value (SAR)", "القيمة (ريال)") },
+    { k: "onSystem", t: "yesno", q: q("Was the refund done on the system?", "هل تم الاسترداد على النظام؟") }, { k: "staff", t: "staff", q: q("Staff member who did the return", "الموظف الذي أجرى المرتجع"), def: "me" }, { k: "remarks", t: "text", q: q("Remarks", "ملاحظات"), opt: 1 }] },
+  potw: { letter: "XYZ", kind: "sheet", title: q("Product of the Week", "منتج الأسبوع"), sched: { freq: "weekly", dow: 0, due: "20:00", who: "ss" }, fields: [
+    { k: "name", t: "staff", q: q("Who is filling this in?", "من يعبّئ هذا النموذج؟"), def: "me" }, { k: "product", t: "text", q: q("Which product?", "أي منتج؟") },
+    { k: "benefits", t: "long", q: q("3 key technologies / benefits", "أهم 3 تقنيات / مزايا") }, { k: "introduce", t: "long", q: q("How would you introduce this product to a customer?", "كيف تقدّم هذا المنتج للعميل؟") },
+    { k: "link", t: "long", q: q("Which other products can you link sell / cross sell with it?", "ما المنتجات الأخرى التي يمكن بيعها معه؟") }, { k: "objections", t: "long", q: q("What objections do you expect, and how will you overcome them?", "ما الاعتراضات المتوقعة وكيف تتجاوزها؟") }] },
+};
+Object.entries(FORMS).forEach(([id, f]) => { f.id = id; });
+const FORM_ORDER = ["opening", "closing", "huddle", "tryon", "cleaner", "feedback", "smweekly", "keys", "visitor", "vendor", "incident", "lostfound", "vault", "codechange", "locker", "till", "stockcheck", "discrepancy", "cashhandover", "banking", "refund", "potw"];
+const BINDER = [["A", "Opening and Closing Checklist", ["opening", "closing"]], ["B", "Daily Huddle", ["huddle"]], ["C", "Daily Try ON Counting", ["tryon"]], ["D", "Cleaner Daily Log", ["cleaner"]], ["E", "Customer Feedback Form", ["feedback"]],
+  ["F", "Store Manager's Weekly Checklist", ["smweekly"]], ["G", "Key Handover Log", ["keys"]], ["H", "Visitor Log", ["visitor"]], ["I", "Vendor / Contractor's Log sheet", ["vendor"]], ["J", "POS Incident Report", ["incident"]],
+  ["K", "Lost and Found Log", ["lostfound"]], ["L", "Vault Opening Log / Vault Code Change Log", ["vault", "codechange"]], ["M", "Weekly Staff Locker Check", ["locker"]], ["N", "Weekly Till Spot Check", ["till"]],
+  ["O", "Daily Random Stock Check", ["stockcheck"]], ["Q", "Stock Discrepancy Summary", ["discrepancy"]], ["R", "Daily Cash Handover", ["cashhandover"]], ["S", "Banking Deposit Log", ["banking"]],
+  ["T", "Permit Copies", []], ["XYZ", "Return / Refund Log, Product of the Week sheet and others", ["refund", "potw"]]];
+
+function tryonFields() {                     // one question per try-on model
+  const t = (S.cfg && S.cfg.tryon) || {}; const out = [];
+  ["z1", "z2", "z3"].forEach(z => (t[z] || []).forEach((it, i) => { if (it && it.item) out.push({ k: `${z}_${i}`, t: "num", q: q(`${it.item}: how many pairs are on the floor?`, `${it.item}: كم زوجاً موجود في الصالة؟`), hint: it.sys !== "" && it.sys != null ? q(`System quantity: ${it.sys}`, `كمية النظام: ${it.sys}`) : null }); }));
+  out.push({ k: "checkedBy", t: "staff", q: q("Closing checked by", "تم الفحص عند الإغلاق بواسطة"), def: "me" });
+  return out;
+}
+const fieldsOf = f => (f.dyn === "tryon" ? tryonFields() : f.fields || []);
+const cfgForm = id => Object.assign({ on: true }, FORMS[id].sched, (S.cfg && S.cfg.forms && S.cfg.forms[id]) || {});
+const formsOn = () => FORM_ORDER.filter(id => cfgForm(id).on !== false);
+
+/* ===================== drawing on the form pages ===================== */
+const PFONT = 'Arial, "Helvetica Neue", Helvetica, sans-serif';
+function tx(c, s, x0, y0, x1, y1, op = {}) {
+  s = String(s ?? "").replace(/\s+/g, " ").trim(); if (!s) return;
+  const pad = op.pad ?? 2.2, w = x1 - x0 - pad * 2, h = y1 - y0, min = op.min ?? 4.2, lead = 1.14;
+  const max = Math.min(op.max ?? 8, h * 0.74);
+  const font = z => `${op.bold ? "bold " : ""}${z}px ${PFONT}`;
+  const wrap = z => { c.font = font(z); const words = s.split(" "); const lines = []; let cur = "";
+    for (const wd of words) { const t = cur ? cur + " " + wd : wd; if (c.measureText(t).width <= w || !cur) cur = t; else { lines.push(cur); cur = wd; } }
+    if (cur) lines.push(cur); return lines; };
+  let size = max, lines = [s];
+  for (; size >= min; size -= 0.4) {
+    c.font = font(size);
+    if (!op.wrap && c.measureText(s).width <= w) { lines = [s]; break; }
+    lines = wrap(size);
+    if (lines.length * size * lead <= h - 0.5 && lines.every(l => c.measureText(l).width <= w + 0.5)) break;
+  }
+  if (size < min) { size = min; lines = wrap(size); const fit = Math.max(1, Math.floor(h / (size * lead))); if (lines.length > fit) { lines = lines.slice(0, fit); lines[fit - 1] = lines[fit - 1].replace(/.{0,3}$/, "…"); } }
+  c.font = font(size); c.fillStyle = "#101010"; c.textBaseline = "middle"; c.direction = "ltr";
+  const al = op.align || "c"; c.textAlign = al === "l" ? "left" : al === "r" ? "right" : "center";
+  const x = al === "l" ? x0 + pad : al === "r" ? x1 - pad : (x0 + x1) / 2;
+  const total = lines.length * size * lead; let y = op.top ? y0 + 1 + size * lead / 2 : (y0 + y1) / 2 - total / 2 + size * lead / 2;
+  for (const l of lines) { c.fillText(l, x, y, w + 1); y += size * lead; }
+}
+function mark(c, x0, y0, x1, y1, kind) {
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, r = Math.min(x1 - x0, y1 - y0) * 0.3;
+  c.strokeStyle = "#101010"; c.lineWidth = Math.max(0.9, r * 0.32); c.lineCap = "round"; c.lineJoin = "round"; c.beginPath();
+  if (kind === "x") { c.moveTo(cx - r, cy - r); c.lineTo(cx + r, cy + r); c.moveTo(cx + r, cy - r); c.lineTo(cx - r, cy + r); }
+  else { c.moveTo(cx - r * 1.1, cy); c.lineTo(cx - r * 0.25, cy + r * 0.85); c.lineTo(cx + r * 1.2, cy - r * 0.95); }
+  c.stroke();
+}
+const lin = (a, b, n) => Array.from({ length: n + 1 }, (_, i) => a + (b - a) * i / n);
+/* table positions, in points on an A4 page, measured from each form */
+const GRID = {
+  cleaner: { x: [67, 138, 237, 312, 360, 406, 489, 627, 701, 775], y: lin(104, 506, 24) },
+  visitor: { x: [67, 138, 237, 312, 360, 406, 489, 627, 701, 775], y: lin(115, 517, 24) },
+  vendor: { x: [18, 56, 147, 221, 268, 313, 411, 498, 613, 695, 793], y: lin(121, 538, 20) },
+  keys: { x: [32, 119, 181, 243, 310, 387, 483, 579, 675, 771], y: lin(158, 537, 22) },
+  lostfound: { x: [17, 82, 146, 215, 298, 373, 516, 583, 670, 774], y: lin(113, 517, 15) },
+  vault: { x: [18, 82, 138, 180, 220, 256, 286, 328, 371, 412, 450, 491, 594, 697, 784], y: lin(161, 446, 20) },
+  codechange: { x: [85, 252, 419, 586, 753], y: lin(125, 429, 22) },
+  locker: { x: [67, 133, 258, 355, 491, 718], y: lin(107, 526, 25) },
+  till: { x: [18, 79, 154, 228, 304, 377, 447, 532, 643, 748], y: lin(120, 509, 15) },
+  stockcheck: { x: [18, 49, 133, 353, 409, 465, 518, 580, 625, 689, 751], y: lin(115, 415, 20) },
+  banking: { x: [34, 93, 186, 260, 403, 529, 646, 789], y: lin(137, 526, 20) },
+  cashhandover: { x: [18, 68, 129, 186, 243, 334, 391, 460, 558, 633, 733, 819], y: lin(155, 526, 22) },
+  refund: { x: [50, 92, 128, 176, 244, 318, 353, 400, 448, 528, 575, 641, 777], y: lin(135, 382, 22) },
+};
+const V = { t: 1 };                          // a tick in a cell
+const tickIf = b => (b ? V : "");
+const VAULT_COLS = ["t_dep", "t_float", "t_petty", "p_dep", "p_float", "p_petty", "pc_tailor", "pc_update", "pc_change"];
+/* what goes in each column of a log row (signature columns stay empty for the pen) */
+const ROWS = {
+  cleaner: r => [fmtD(r.date), r.data.name, r.data.designation, r.data.timeIn, r.data.timeOut, "", r.data.purpose, shortName(r.data.checkedBy), r.data.remarks],
+  visitor: r => [fmtD(r.date), r.data.name, r.data.designation, r.data.timeIn, r.data.timeOut, "", r.data.purpose, shortName(r.data.checkedBy), r.data.remarks],
+  vendor: r => [fmtD(r.date), r.data.name, r.data.company, r.data.timeIn, r.data.timeOut, "", r.data.report, r.data.purpose, shortName(r.data.staff), [r.data.idno ? "ID: " + r.data.idno : "", r.data.remarks].filter(Boolean).join(". ")],
+  keys: r => [fmtD(r.date), tickIf(r.data.key === "store"), tickIf(r.data.key === "spare"), tickIf(r.data.key === "safe"), tickIf(r.data.key === "other"), nameId(r.data.receivedBy), nameId(r.data.releasedBy), r.data.returned, ""],
+  lostfound: r => [r.data.item, fmtD(r.date), r.data.timeFound, r.data.location, shortName(r.data.foundBy), r.data.customer, r.data.action, r.data.storage, ""],
+  vault: r => [fmtD(r.date), r.data.time, ...VAULT_COLS.map(k => tickIf((r.data.reasons || []).includes(k))), r.data.otherReason, shortName(r.data.name), shortName(r.data.witness)],
+  codechange: r => [fmtD(r.date), nameId(r.data.sm), r.data.retailMgr, r.data.remarks],
+  locker: r => [fmtD(r.date), shortName(r.data.who), r.data.time, shortName(r.data.manager), r.data.obs],
+  till: r => [fmtD(r.date), money(r.data.float), money(r.data.cashSale), money(r.data.card), money(r.data.total), r.data.fc, r.data.excess, r.data.aom, r.data.remarks],
+  banking: r => [fmtD(r.date), money(r.data.amount), r.data.time, nameId(r.data.givenBy), r.data.receivedBy, r.data.seal, r.data.slip],
+  cashhandover: r => [fmtD(r.date), r.data.time, money(r.data.cash), money(r.data.cc), money(r.data.online), money(r.data.float), money(r.data.petty), r.data.remarks, shortName(r.data.checkedBy), shortName(r.data.receivedBy), shortName(r.data.verifiedBy)],
+  refund: r => [fmtD(r.date), r.data.time, r.data.invoice, r.data.code, r.data.desc, r.data.qty, money(r.data.value), r.data.onSystem === "y" ? "Yes" : r.data.onSystem === "n" ? "No" : "", nameId(r.data.staff), "", "", r.data.remarks],
+};
+const LEFT_COLS = { cleaner: [6, 8], visitor: [6, 8], vendor: [7, 9], lostfound: [0, 3, 5, 6, 7], vault: [11], codechange: [3], locker: [4], till: [8], cashhandover: [7], refund: [4, 11] };
+/* store name / month boxes on each log */
+const HEAD = {
+  keys: (c, e) => { tx(c, e.store, 186, 104, 386, 124, { align: "l", max: 9 }); tx(c, e.month, 458, 104, 770, 124, { align: "l", max: 9 }); },
+  cashhandover: (c, e) => { tx(c, e.store, 162, 99, 332, 122, { align: "l", max: 9 }); tx(c, e.month, 403, 99, 730, 122, { align: "l", max: 9 }); },
+  refund: (c, e) => { tx(c, e.store, 166, 86, 640, 101, { align: "l", max: 8 }); },
+  codechange: (c, e) => { tx(c, e.store, 224, 80, 580, 98, { align: "l", max: 8.5 }); },
+};
+function logPages(id, recs, env) {
+  const g = GRID[id], per = g.y.length - 1, pages = [], byMonth = {};
+  recs.forEach(r => (byMonth[r.ym || ymOf(r.date)] = byMonth[r.ym || ymOf(r.date)] || []).push(r));
+  const months = Object.keys(byMonth).sort(); if (!months.length) months.push(env.ym || ymOf(today()));
+  for (const ym of months) {
+    const list = byMonth[ym] || [];
+    for (let i = 0; i < Math.max(1, Math.ceil(list.length / per)); i++) {
+      const chunk = list.slice(i * per, (i + 1) * per);
+      pages.push({ bg: id, land: true, draw(c) {
+        HEAD[id] && HEAD[id](c, { store: storeLine(), month: monthLabel(ym) });
+        chunk.forEach((r, k) => { const y0 = g.y[k], y1 = g.y[k + 1];
+          ROWS[id](r).forEach((v, ci) => { if (v === V) mark(c, g.x[ci], y0, g.x[ci + 1], y1); else if (v !== "" && v != null) tx(c, v, g.x[ci], y0, g.x[ci + 1], y1, { align: (LEFT_COLS[id] || []).includes(ci) ? "l" : "c", max: 7.6 }); }); });
+      } });
+    }
+  }
+  return pages;
+}
+/* ---- one-page forms ---- */
+const OPEN_Y = [113, 123, 134, 146, 156, 172, 183, 194, 205, 215, 226, 237, 254, 265, 275, 286, 297, 308, 319, 329, 348];
+const CLOSE_Y = [402, 412, 423, 434, 445, 456, 491, 502, 513, 524, 534, 545];
+const WK_Y = [115, 133, 152, 170, 188, 207, 225, 243, 262, 280, 298, 317, 335, 353, 372, 390, 409, 427, 445, 464, 482, 500, 519, 537, 555, 574, 592, 610];
+const WK_X = [230, 265, 299, 333, 367, 401, 435, 469, 503, 538, 572];
+const SHEETS = {
+  openclose(date) {
+    const a = S.recs.get("opening_" + date), b = S.recs.get("closing_" + date);
+    return [{ bg: "openclose", draw(c) {
+      tx(c, fmtD(date), 48, 38.5, 250, 49, { align: "l", max: 7.5 }); tx(c, storeLine(), 50, 49.5, 320, 60, { align: "l", max: 7.5 });
+      const part = (rec, items, ys, yb) => { if (!rec) return;
+        items.forEach((it, i) => { const a2 = rec.data.items && rec.data.items[it.id]; if (a2 && a2.v === "y") mark(c, 32, ys[i], 40.5, ys[i + 1], "x"); });
+        if (rec.done) { tx(c, nameId(rec.doneBy), 146, yb, 298, yb + 10.5, { align: "l", max: 7 }); tx(c, new Date(rec.doneAt).toTimeString().slice(0, 5), 322, yb, 420, yb + 10.5, { align: "l", max: 7 }); } };
+      part(a, FORMS.opening.items, OPEN_Y, 358.6); part(b, FORMS.closing.items, CLOSE_Y, 556);
+    } }];
+  },
+  smweekly(ym) {
+    return [{ bg: "smweekly", draw(c) {
+      const notes = [];
+      for (let w = 1; w <= 5; w++) { const rec = S.recs.get(`smweekly_${ym}_w${w}`); if (!rec) continue; const xa = WK_X[(w - 1) * 2], xb = WK_X[(w - 1) * 2 + 1], xc = WK_X[(w - 1) * 2 + 2];
+        FORMS.smweekly.items.forEach((it, i) => { const a = rec.data.items && rec.data.items[it.id]; if (!a) return; if (a.v === "y") mark(c, xa, WK_Y[i], xb, WK_Y[i + 1]); else if (a.v === "na") mark(c, xb, WK_Y[i], xc, WK_Y[i + 1]); if (a.note) notes.push(`W${w} #${i + 1}: ${a.note}`); });
+        if (rec.done) tx(c, fmtD(ymd(new Date(rec.doneAt))), xa, 624, xc, 637.5, { max: 6.5 });
+        if (rec.data.comment) notes.push(`W${w}: ${rec.data.comment}`); }
+      tx(c, notes.join("   "), 20, 646, 570, 678, { align: "l", wrap: 1, max: 6.5, top: 1 });
+    } }];
+  },
+  huddle(r) { const d = r.data; return [{ bg: "huddle", draw(c) {
+    tx(c, fmtD(r.date), 62, 98, 161, 114, { max: 8 }); tx(c, d.monthTarget ? "SAR " + money(d.monthTarget) : "", 349, 98, 444, 114, { max: 8, bold: 1 });
+    const L2 = [d.salesY && money(d.salesY), d.unitsY, d.invY, d.uptY, d.atvY && money(d.atvY), d.convY, d.mtdSales && money(d.mtdSales)], R2 = [d.todayTarget && money(d.todayTarget), d.unitsTarget, d.invTarget, d.uptGoal, d.atvGoal && money(d.atvGoal), d.convGoal, d.mtdAch];
+    const ys = [135, 153, 172, 190, 208, 226, 244, 262];
+    for (let i = 0; i < 7; i++) { tx(c, L2[i], 100, ys[i], 161, ys[i + 1], { max: 7.5 }); tx(c, R2[i], 349, ys[i], 444, ys[i + 1], { max: 7.5 }); }
+    tx(c, d.news, 20, 287, 442, 340, { align: "l", wrap: 1, max: 7.5, top: 1 }); tx(c, d.focus, 20, 361, 442, 420, { align: "l", wrap: 1, max: 7.5, top: 1 }); tx(c, d.memos, 20, 434, 442, 484, { align: "l", wrap: 1, max: 7.5, top: 1 });
+    const ty = lin(506, 626, 8), xs = [18, 100, 161, 221, 349, 444];
+    (d.team || []).slice(0, 8).forEach((m, i) => [shortName(m.who), m.timing, m.ysale && money(m.ysale), m.ttarget && money(m.ttarget), m.mtd].forEach((v, ci) => tx(c, v, xs[ci], ty[i], xs[ci + 1], ty[i + 1], { max: 7, bold: ci === 0 })));
+  } }]; },
+  tryon(r) { const d = r.data, t = (S.cfg && S.cfg.tryon) || {}; return [{ bg: "tryon", draw(c) {
+    tx(c, fmtD(r.date), 366, 88, 508, 105, { align: "l", max: 9 }); tx(c, nameId(d.checkedBy), 336, 122, 508, 139, { max: 8 });
+    const zones = [["z1", 173, 274, 6, 274], ["z2", 308, 409, 6, 409], ["z3", 443, 476.5, 2, 476.5]]; let gs = 0, gp = 0, anyS = false, anyP = false;
+    zones.forEach(([z, a, b, n, ty]) => { const ys = lin(a, b, n); let ss = 0, sp = 0, hs = false, hp = false;
+      (t[z] || []).slice(0, n).forEach((it, i) => { if (!it || !it.item) return; const p = d[`${z}_${i}`];
+        tx(c, it.fam, 49, ys[i], 123, ys[i + 1], { align: "l", max: 9 }); tx(c, it.item, 123, ys[i], 334, ys[i + 1], { align: "l", max: 9 }); tx(c, it.sys, 334, ys[i], 454, ys[i + 1], { max: 9 }); tx(c, p, 454, ys[i], 509, ys[i + 1], { max: 9 });
+        if (num(it.sys) !== null) { ss += num(it.sys); hs = true; } if (num(p) !== null) { sp += num(p); hp = true; } });
+      if (hs) { tx(c, ss, 334, ty, 454, ty + 16.8, { max: 9, bold: 1 }); gs += ss; anyS = true; } if (hp) { tx(c, sp, 454, ty, 509, ty + 16.8, { max: 9, bold: 1 }); gp += sp; anyP = true; } });
+    if (anyS) tx(c, gs, 334, 493.3, 454, 510, { max: 9, bold: 1 }); if (anyP) tx(c, gp, 454, 493.3, 509, 510, { max: 9, bold: 1 });
+  } }]; },
+  feedback(r) { const d = r.data; return [{ bg: "feedback", draw(c) {
+    tx(c, storeLine(), 47, 115, 279, 125, { align: "l", max: 7 }); tx(c, fmtD(r.date), 320, 115, 558, 125, { align: "l", max: 7 });
+    tx(c, d.custName, 47, 161.5, 170, 171.5, { align: "l", max: 7 }); tx(c, d.contact, 198, 161.5, 279, 171.5, { align: "l", max: 7 }); tx(c, d.email, 320, 161.5, 558, 171.5, { align: "l", max: 7 });
+    const by = [200, 210, 227, 244, 260, 277, 294, 311, 327]; ["cashier", "sales", "mgmt", "products", "atmo", "service", "policy", "other"].forEach((k, i) => { if ((d.about || []).includes(k)) mark(c, 151, by[i], 170, by[i + 1]); });
+    if (d.nature === "complaint") mark(c, 410, 200, 429, 210); if (d.nature === "compliment") mark(c, 410, 210, 429, 227);
+    tx(c, d.details, 50, 350, 555, 505, { align: "l", wrap: 1, max: 9, top: 1 }); tx(c, d.action, 49, 547.6, 556, 558.4, { align: "l", wrap: 1, max: 6.5, pad: 1.5 }); tx(c, fmtD(r.date), 47, 577, 170, 597, { max: 8 });
+  } }]; },
+  incident(r) { const d = r.data, st = (S.cfg && S.cfg.store) || {}; return [{ bg: "incident", land: true, draw(c) {
+    tx(c, fmtD(r.date), 133, 79, 205, 92, { align: "l", max: 8 }); tx(c, st.name, 318, 79, 456, 92, { align: "l", max: 8 }); tx(c, st.code, 575, 79, 641, 92, { align: "l", max: 8 });
+    const bx = [153.8, 231.3, 316.7, 404.5, 488, 573.4, 641.3, 709.3], rowY = { customer: 116.3, employee: 143.3, store: 171.3 };
+    const idx = (INC_TYPES[d.cat] || []).findIndex(t => t.v === d.type); if (idx >= 0) mark(c, bx[idx] - 0.5, rowY[d.cat] - 0.5, bx[idx] + 8.5, rowY[d.cat] + 8.5);
+    tx(c, fmtD(d.incDate), 58, 227, 229, 246, { align: "l", max: 8 }); tx(c, d.incTime, 233, 227, 328, 246, { align: "l", max: 8 }); tx(c, d.location, 332, 227, 500, 246, { align: "l", max: 8, wrap: 1 }); tx(c, d.witnesses, 504, 227, 775, 246, { align: "l", max: 8, wrap: 1 });
+    tx(c, d.info, 60, 270, 773, 360, { align: "l", wrap: 1, max: 9, top: 1 }); tx(c, d.action, 60, 377, 773, 428, { align: "l", wrap: 1, max: 8.5, top: 1 });
+    tx(c, shortName(d.preparedBy), 57, 442, 152, 454, { align: "l", max: 7 }); tx(c, fmtD(r.date), 82, 453, 152, 465, { align: "l", max: 7 }); tx(c, d.escalatedTo, 206, 431, 775, 444, { align: "l", max: 8 });
+    DEPTS.forEach((dp, i) => { if ((d.reviewed || []).includes(dp.v)) mark(c, bx[i] - 0.5, 476.8, bx[i] + 8.5, 485.8); });
+  } }]; },
+  stockcheck(r) { const g = GRID.stockcheck; return [{ bg: "stockcheck", land: true, draw(c) {
+    tx(c, fmtD(r.date) + "   " + storeLine(), 520, 58, 690, 78, { align: "r", max: 7.5 });
+    (r.data.items || []).slice(0, 20).forEach((it, i) => { const fin = it.recount !== "" && it.recount != null ? it.recount : it.phy, v = num(fin) !== null && num(it.sys) !== null ? num(fin) - num(it.sys) : null;
+      [it.style, it.desc, it.sys, it.size, fin, [v === null ? "" : (v > 0 ? "+" + v : String(v)), it.remark].filter(x => x !== "" && x != null).join(" "), it.phy, it.recount, ""].forEach((val, ci) => tx(c, val, g.x[ci + 1], g.y[i], g.x[ci + 2], g.y[i + 1], { max: 7.5, align: ci === 1 ? "l" : "c" })); });
+  } }]; },
+  discrepancy(r) { const d = r.data, sm = staffList().find(s => s.role === "sm"); return [{ bg: "discrepancy", land: true, draw(c) {
+    tx(c, fmtD(r.date), 75, 80, 400, 90.5, { align: "l", max: 7 }); tx(c, storeLine(), 143, 90.5, 500, 104, { align: "l", max: 7 });
+    const ys = lin(124, 248, 13), xs = [18, 151, 283, 416, 548, 681, 814];
+    (d.rows || []).slice(0, 13).forEach((it, i) => { const v = num(it.phy) !== null && num(it.sys) !== null ? num(it.phy) - num(it.sys) : null; [i + 1, it.ref, it.sys, it.phy, v === null ? "" : (v > 0 ? "+" + v : String(v)), it.remark].forEach((val, ci) => tx(c, val, xs[ci], ys[i], xs[ci + 1], ys[i + 1], { max: 6.8 })); });
+    const sy = [280, 291, 301, 312]; (d.counters || []).slice(0, 3).forEach((id, i) => { tx(c, i + 1, 18, sy[i], 151, sy[i + 1], { max: 6.8 }); tx(c, nameId(id), 151, sy[i], 283, sy[i + 1], { max: 6.8 }); });
+    tx(c, d.comments, 64, 312, 546, 333, { align: "l", wrap: 1, max: 6.8 }); if (sm) tx(c, nameId(sm.id), 550, 322, 700, 333, { align: "l", max: 6.5 });
+  } }]; },
+  potw(r) { const d = r.data; return [{ bg: "potw", draw(c) {
+    tx(c, fmtD(r.date), 62, 134, 205, 147, { align: "l", max: 9 }); tx(c, storeLine(), 66, 155, 205, 168, { align: "l", max: 9 }); tx(c, shortName(d.name), 66, 175, 205, 188, { align: "l", max: 9 });
+    tx(c, d.product, 30, 225, 483, 248, { align: "l", max: 10, wrap: 1 }); tx(c, d.benefits, 30, 283, 483, 349, { align: "l", wrap: 1, max: 9, top: 1 }); tx(c, d.introduce, 30, 380, 483, 486, { align: "l", wrap: 1, max: 9, top: 1 });
+    tx(c, d.link, 30, 504, 483, 638, { align: "l", wrap: 1, max: 9, top: 1 }); tx(c, d.objections, 30, 656, 483, 782, { align: "l", wrap: 1, max: 9, top: 1 });
+  } }]; },
+  cover() { const st = (S.cfg && S.cfg.store) || {}; return [{ bg: "cover", draw(c) { tx(c, st.name, 45, 380, 490, 420, { max: 24, bold: 1 }); tx(c, st.code, 45, 468, 490, 502, { max: 20 }); } }]; },
+  index() { const st = (S.cfg && S.cfg.store) || {}; return [{ bg: "index", draw(c) { tx(c, st.code, 42, 72, 163, 88, { max: 10, bold: 1 }); } }]; },
+};
+/* pages for one form over a date range */
+function pagesFor(id, from, to, blank) {
+  const f = FORMS[id];
+  if (id === "cover" || id === "index") return SHEETS[id]();
+  if (blank) { if (GRID[id] && f.kind === "log") return logPages(id, [], { ym: ymOf(from) }); return [{ bg: f.printAs || id, land: ["incident", "stockcheck", "discrepancy"].includes(id), draw() {} }]; }
+  if (f.printAs === "openclose") { const out = []; for (let d = from; d <= to; d = addDays(d, 1)) if (S.recs.get("opening_" + d) || S.recs.get("closing_" + d)) out.push(...SHEETS.openclose(d)); return out; }
+  if (id === "smweekly") { const out = []; const seen = new Set(); recsOf(id, addDays(from, -31), to).forEach(r => { const ym = r.wk ? r.wk.slice(0, 7) : r.ym; if (ym >= ymOf(from) && ym <= ymOf(to) && !seen.has(ym)) { seen.add(ym); out.push(...SHEETS.smweekly(ym)); } }); return out; }
+  const recs = recsOf(id, from, to);
+  if (f.kind === "log") return recs.length ? logPages(id, recs, {}) : [];
+  return recs.flatMap(r => SHEETS[id](r));
+}
+const bgCache = {};
+function loadBg(name) {
+  if (!bgCache[name]) bgCache[name] = fetch(`forms/${name}.png`).then(r => { if (!r.ok) throw new Error("form image missing: " + name); return r.blob(); }).then(b => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(b); }));
+  return bgCache[name];
+}
+async function renderPage(pg, dpi) {
+  const W = pg.land ? 841.89 : 595.28, H = pg.land ? 595.28 : 841.89, k = dpi / 72;
+  const cv = document.createElement("canvas"); cv.width = Math.round(W * k); cv.height = Math.round(H * k);
+  const c = cv.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, cv.width, cv.height);
+  const im = await loadBg(pg.bg); c.drawImage(im, 0, 0, cv.width, cv.height);
+  c.save(); c.scale(k, k); pg.draw(c); c.restore();
+  return cv;
+}
+async function makePdf(pages, onStep) {
+  const { jsPDF } = window.jspdf; let doc = null;
+  for (let i = 0; i < pages.length; i++) {
+    const pg = pages[i], cv = await renderPage(pg, 170), o2 = pg.land ? "landscape" : "portrait";
+    if (!doc) doc = new jsPDF({ unit: "pt", format: "a4", orientation: o2, compress: true }); else doc.addPage("a4", o2);
+    doc.addImage(cv.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, pg.land ? 841.89 : 595.28, pg.land ? 595.28 : 841.89, undefined, "FAST");
+    cv.width = cv.height = 0; onStep && onStep(i + 1, pages.length); await new Promise(r => setTimeout(r, 0));
+  }
+  return doc.output("blob");
+}
+async function savePdf(blob, filename) {
+  if (DOWNLOADS) { try { await DOWNLOADS.save({ filename, data: blob }); toast(LANG === "ar" ? "تم حفظ الملف" : "PDF saved"); return true; } catch (e) { if (e && e.code === "declined") return false; console.error(e); toast((LANG === "ar" ? "تعذّر حفظ الملف: " : "Could not save the PDF: ") + (e && e.code || "")); return false; } }
+  try { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); a.remove(); return true; } catch (e) { toast("Saving files is not available in this view."); return false; }
+}
+
+/* ===================== tasks: what is due, who does it, is it done ===================== */
+function schedDate(id, date) {              // the day this form falls due in the period that contains `date` (null = not scheduled)
+  const c = cfgForm(id), d = parseD(date);
+  if (c.on === false) return null;
+  if (c.freq === "daily") return date;
+  if (c.freq === "weekly") return addDays(weekStart(date), c.dow ?? 0);
+  if (c.freq === "monthly") { const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); return `${date.slice(0, 8)}${pad2(Math.min(c.dom || 1, last))}`; }
+  if (c.freq === "quarterly") { const m = Math.floor(d.getMonth() / 3) * 3; return `${d.getFullYear()}-${pad2(m + 1)}-${pad2(Math.min(c.dom || 1, 28))}`; }
+  return null;
+}
+function periodOf(id, date) {
+  const c = cfgForm(id), d = parseD(date);
+  if (c.freq === "weekly") return [weekStart(date), addDays(weekStart(date), 6)];
+  if (c.freq === "monthly") return [date.slice(0, 8) + "01", ymd(new Date(d.getFullYear(), d.getMonth() + 1, 0))];
+  if (c.freq === "quarterly") { const m = Math.floor(d.getMonth() / 3) * 3; return [ymd(new Date(d.getFullYear(), m, 1)), ymd(new Date(d.getFullYear(), m + 3, 0))]; }
+  return [date, date];
+}
+function runId(id, date) {                  // the record a scheduled form writes to
+  const f = FORMS[id];
+  if (id === "smweekly") { const sd = schedDate(id, date) || date; return `smweekly_${ymOf(sd)}_w${weekOfMonth(sd)}`; }
+  if (f.kind === "check" || f.single === "day") return `${id}_${date}`;
+  return null;
+}
+const planOf = date => S.plans[date] || {};
+const isOff = (date, sid) => !!(planOf(date).off && planOf(date).off[sid]);
+const isSplit = (id, date) => { const p = planOf(date); if (p.split && id in p.split) return !!p.split[id]; return !!cfgForm(id).split; };
+function defaultWho(id, date) {
+  const w = cfgForm(id).who; if (!w) return "";
+  if (staff(w)) return isOff(date, w) ? "" : w;
+  const c = staffList().filter(s => s.role === w && !isOff(date, s.id)); return c.length ? c[0].id : "";
+}
+const GROUP_ROLE = { floor: "ss", cash: "dsm", stock: "sc", admin: "dsm", exit: "dsm" };
+const roleWho = (role, date) => { const c = staffList().filter(s => s.role === role && !isOff(date, s.id)); return c.length ? c[0].id : ""; };
+function groupsOf(id) { const seen = []; FORMS[id].items.forEach(it => { if (!seen.includes(it.g)) seen.push(it.g); }); return seen; }
+function taskDone(id, date, group) {
+  const f = FORMS[id], rid2 = runId(id, date), [a, b] = periodOf(id, date);
+  if (f.kind === "check") { const r = S.recs.get(rid2); if (!r) return false; if (!group) return !!r.done; return f.items.filter(it => it.g === group).every(it => r.data.items && r.data.items[it.id]); }
+  if (rid2) return S.recs.has(rid2);
+  return recsOf(id, a, b).length > 0;
+}
+function tasksFor(date) {
+  const out = [], p = planOf(date), now = today(), hm = nowHM();
+  for (const id of formsOn()) {
+    const sd = schedDate(id, date); if (!sd) continue;
+    const [, pe] = periodOf(id, date); if (date < sd || date > pe) continue;
+    if (p.skip && p.skip[id]) continue;
+    const c = cfgForm(id), f = FORMS[id];
+    const mk = (key, group) => { const ov = (p.tasks && p.tasks[key]) || {}; const due = ov.due || (group && p.tasks && p.tasks[id] && p.tasks[id].due) || c.due || "23:59";
+      const mainWho = p.tasks && p.tasks[id] && "who" in p.tasks[id] ? p.tasks[id].who : defaultWho(id, date);
+      const who = "who" in ov ? ov.who : group ? (roleWho(GROUP_ROLE[group], date) || mainWho) : mainWho;
+      const done = taskDone(id, date, group);
+      const late = !done && (date < now || sd < date || (date === now && hm > due));
+      return { key, id, group, date, due, who, done, late, carried: sd < date, title: L(f.title) + (group ? " · " + L(GROUPS[group]) : "") }; };
+    if (f.kind === "check" && !f.weekly && isSplit(id, date)) groupsOf(id).forEach(g => out.push(mk(`${id}:${g}`, g)));
+    out.push(mk(id, null));
+  }
+  return out.sort((a, b) => a.due.localeCompare(b.due));
+}
+const stClass = t => (t.done ? "done" : t.late ? "late" : "due");
+const stChip = t => (t.done ? `<span class="chip ok">✓ ${T("done")}</span>` : t.late ? `<span class="chip bad">${T("late")}</span>` : `<span class="chip warn">${T("dueBy")} ${esc(t.due)}</span>`);
+
+/* ===================== the question-by-question screen ===================== */
+let W = null;
+const rememberKey = (id, k) => `sb-last-${id}-${k}`;
+function defVal(f, fd, data) {
+  if (fd.calc) return fd.calc(data);
+  if (fd.def === "me") return ME; if (fd.def === "now") return nowHM(); if (fd.def === "today") return today();
+  if (fd.cfgDef) return (S.cfg && S.cfg.huddle && S.cfg.huddle[fd.cfgDef]) || "";
+  if (fd.remember) { try { return localStorage.getItem(rememberKey(f.id, fd.k)) || ""; } catch (e) { return ""; } }
+  if (fd.t === "rows") {
+    if (fd.seed === "duty") return staffList().filter(s => !isOff(W.date, s.id)).slice(0, fd.max).map(s => ({ who: s.id }));
+    if (fd.seed === "variance") { const sc = S.recs.get("stockcheck_" + W.date); if (!sc) return [];
+      return (sc.data.items || []).map(it => { const fin = it.recount !== "" && it.recount != null ? it.recount : it.phy; return { it, fin }; }).filter(x => num(x.fin) !== null && num(x.it.sys) !== null && num(x.fin) !== num(x.it.sys))
+        .map(x => ({ ref: [x.it.style, x.it.desc, x.it.size].filter(Boolean).join(" "), sys: x.it.sys, phy: x.fin, remark: x.it.remark || "" })).slice(0, fd.max); }
+    return [];
+  }
+  return fd.def ?? (fd.t === "multi" ? [] : "");
+}
+function startForm(id, opt = {}) {
+  const f = FORMS[id], date = opt.date || today();
+  if (!S.canWrite) { toast(T("readOnly")); return; }
+  W = { id, f, date, group: opt.group || null, i: 0, data: {}, editId: opt.editId || null, sub: null };
+  if (f.kind === "check") {
+    W.recId = runId(id, date); const rec = S.recs.get(W.recId);
+    W.items = f.items.filter(it => !W.group || it.g === W.group);
+    const firstOpen = W.items.findIndex(it => !(rec && rec.data.items && rec.data.items[it.id])); W.i = firstOpen < 0 || (!W.group && !f.weekly && isSplit(id, date)) ? W.items.length : firstOpen;
+  } else {
+    W.recId = opt.editId || runId(id, date) || `${id}_${date}_${rid()}`;
+    const ex = S.recs.get(W.recId);
+    if (ex) { W.data = clone(ex.data); W.date = ex.date; W.existing = ex; }
+    W.fields = fieldsOf(f);
+    W.fields.forEach(fd => { if (!(fd.k in W.data)) W.data[fd.k] = defVal(f, fd, W.data); });
+  }
+  renderWiz();
+}
+function closeWiz() { W = null; const el = $(".wiz"); if (el) el.remove(); render(); }
+function wizShell(title, pct, body, foot) {
+  let el = $(".wiz"); if (!el) { el = document.createElement("div"); el.className = "wiz"; document.body.appendChild(el); }
+  el.innerHTML = `<header><button class="pill" id="wzX" aria-label="${T("close")}">✕</button><div class="t">${esc(title)}</div><span class="chip">${esc(fmtD(W.date))}</span></header>
+    <div class="prog"><i style="width:${Math.round(pct * 100)}%"></i></div><div class="body">${body}</div><footer>${foot}</footer>`;
+  $("#wzX", el).onclick = closeWiz; return el;
+}
+function renderWiz() { if (!W) return; if (W.f.kind === "check") return renderCheck(); return renderField(); }
+
+/* ---- checklists ---- */
+function checkBase() { return { form: W.id, date: W.date, at: Date.now(), by: ME, data: { items: {} }, done: false }; }
+function renderCheck() {
+  const f = W.f, rec = S.recs.get(W.recId), ans = (rec && rec.data.items) || {}, n = W.items.length, weekly = !!f.weekly;
+  if (W.i < n) {
+    const it = W.items[W.i], cur = ans[it.id];
+    const btn = (v, cls, label) => `<button class="opt huge ${cls} ${cur && cur.v === v ? "on" : ""}" data-v="${v}">${label}</button>`;
+    const el = wizShell(L(f.title) + (W.group ? " · " + L(GROUPS[W.group]) : ""), W.i / n,
+      `<div class="muted num"><bdi dir="ltr">${W.i + 1} / ${n}</bdi>${it.g && GROUPS[it.g] && !weekly ? " · " + esc(L(GROUPS[it.g])) : ""}</div>
+       <div class="q ${L(it).length > 110 ? "long" : ""}">${esc(L(it))}</div>
+       ${W.noteFor === it.id ? `<div class="field"><label for="wzNote">${T("whyNot")}</label><textarea class="big" id="wzNote" style="min-height:110px">${esc((cur && cur.note) || "")}</textarea></div>` :
+        `<div class="opts ${weekly ? "" : "two"}">${btn("y", "yes", weekly ? T("yes") : "✓ " + T("done"))}${weekly ? btn("na", "", T("na")) : ""}${btn("n", "no", weekly ? T("no") : "✕ " + T("notDone"))}</div>`}`,
+      `<button class="btn alt" id="wzBack" ${W.i === 0 && W.noteFor !== it.id ? "disabled" : ""}>${T("back")}</button>${W.noteFor === it.id ? `<button class="btn" id="wzNext">${T("next")}</button>` : (cur ? `<button class="btn alt" id="wzNext">${T("next")}</button>` : "")}`);
+    el.querySelectorAll(".opt").forEach(b => b.onclick = () => { const v = b.dataset.v;
+      Data.patchRec(W.recId, checkBase(), { data: { items: { [it.id]: { v, by: ME, at: Date.now(), note: v === "n" ? ((cur && cur.note) || "") : "" } } } });
+      if (v === "n") { W.noteFor = it.id; renderWiz(); setTimeout(() => $("#wzNote") && $("#wzNote").focus(), 50); } else { W.i++; renderWiz(); } });
+    $("#wzBack", el).onclick = () => { if (W.noteFor === it.id) W.noteFor = null; else W.i--; renderWiz(); };
+    const nx = $("#wzNext", el); if (nx) nx.onclick = () => { if (W.noteFor === it.id) { const note = $("#wzNote").value.trim(); Data.patchRec(W.recId, checkBase(), { data: { items: { [it.id]: { note } } } }); W.noteFor = null; } W.i++; renderWiz(); };
+    return;
+  }
+  // summary / sign-off
+  const all = f.items, answered = all.filter(it => ans[it.id]).length, notDone = all.filter(it => ans[it.id] && ans[it.id].v === "n");
+  const ownerTask = tasksFor(W.date).find(t => t.key === W.id), owner = ownerTask ? ownerTask.who : "", canSign = iAmMgr() || !owner || owner === ME;
+  const waiting = isSplit(W.id, W.date) && !f.weekly ? tasksFor(W.date).filter(t => t.id === W.id && t.group && !t.done) : [];
+  const el = wizShell(L(f.title), 1, `
+    <div class="q">${rec && rec.done ? "✓ " + T("done") : answered === all.length ? T("allAnswered") : `${answered} / ${all.length}`}</div>
+    ${rec && rec.done ? `<p class="muted">${esc(nameId(rec.doneBy))} · ${new Date(rec.doneAt).toTimeString().slice(0, 5)}</p>` : ""}
+    ${waiting.length ? `<div class="list">${waiting.map(t => `<div class="row"><div class="grow"><b>${esc(L(GROUPS[t.group]))}</b><div class="small muted">${T("waiting")} ${esc(shortName(t.who) || T("nobody"))}</div></div>${canSign ? `<button class="btn sm alt" data-take="${t.group}">${T("takeOver")}</button>` : ""}</div>`).join("")}</div>` : ""}
+    ${notDone.length ? `<div class="card stack"><b>${T("notDone")} (${notDone.length})</b>${notDone.map(it => `<div class="small">✕ ${esc(L(it))}${ans[it.id].note ? `<div class="muted">${esc(ans[it.id].note)}</div>` : ""}</div>`).join("")}</div>` : ""}
+    ${f.weekly ? `<div class="field"><label for="wzCom">${LANG === "ar" ? "تعليقات" : "Comments"} (${T("optional")})</label><textarea class="big" id="wzCom" style="min-height:100px">${esc((rec && rec.data.comment) || "")}</textarea></div>` : ""}
+    ${!canSign && !(rec && rec.done) ? `<p class="muted">${LANG === "ar" ? "يؤكد المسؤول ويوقّع على الورقة:" : "The person in charge confirms and signs the paper:"} <b>${esc(shortName(owner))}</b></p>` : ""}`,
+    `<button class="btn alt" id="wzBack">${T("back")}</button>${canSign && !(rec && rec.done) && !W.group ? `<button class="btn" id="wzDone" ${answered < all.length ? "disabled" : ""}>${T("confirmSign")}</button>` : `<button class="btn" id="wzClose">${T("close")}</button>`}`);
+  $("#wzBack", el).onclick = () => { W.i = Math.max(0, W.items.length - 1); renderWiz(); };
+  el.querySelectorAll("[data-take]").forEach(b => b.onclick = () => { W.group = b.dataset.take; W.items = f.items.filter(it => it.g === W.group); W.i = Math.max(0, W.items.findIndex(it => !ans[it.id])); renderWiz(); });
+  const dn = $("#wzDone", el); if (dn) dn.onclick = () => { const patch = { done: true, doneBy: ME, doneAt: Date.now() }; if (f.weekly) patch.data = { comment: $("#wzCom").value.trim() }; Data.patchRec(W.recId, checkBase(), patch); toast(T("saved")); closeWiz(); };
+  const cl = $("#wzClose", el); if (cl) cl.onclick = closeWiz;
+}
+
+/* ---- every other form: one question per screen ---- */
+function optsOf(fd) { if (fd.staffOpts || fd.t === "staff") return staffList().map(s => ({ v: s.id, en: `${s.short || s.name}`, ar: s.short || s.name, sub: L(ROLES[s.role]) })); return fd.optsFrom ? fd.optsFrom(W.data) : fd.opts || []; }
+function inputHtml(fd, val, idp = "wz") {
+  const id = `${idp}_${fd.k}`;
+  if (fd.t === "long") return `<textarea class="big" id="${id}" placeholder="${T("typeHere")}">${esc(val)}</textarea>`;
+  if (fd.t === "num" || fd.t === "money") return `<input class="big num" id="${id}" inputmode="decimal" autocomplete="off" value="${esc(val)}">`;
+  if (fd.t === "time") return `<input class="big num" id="${id}" type="time" value="${esc(val)}">`;
+  if (fd.t === "date") return `<input class="big num" id="${id}" type="date" value="${esc(val)}">`;
+  return `<input class="big" id="${id}" autocomplete="off" placeholder="${T("typeHere")}" value="${esc(val)}">`;
+}
+function renderField() {
+  const f = W.f, fields = W.fields, n = fields.length;
+  if (W.i >= n) return finishForm();
+  const fd = fields[W.i], val = W.data[fd.k];
+  let body = `<div class="muted num"><bdi dir="ltr">${W.i + 1} / ${n}</bdi>${fd.opt ? " · " + T("optional") : ""}</div><div class="q ${L(fd.q).length > 70 ? "long" : ""}">${esc(L(fd.q))}</div>${fd.hint ? `<p class="hint">${esc(L(fd.hint))}</p>` : ""}`;
+  const auto = ["yesno", "choice", "staff"].includes(fd.t);
+  if (fd.t === "yesno") body += `<div class="opts two"><button class="opt huge yes ${val === "y" ? "on" : ""}" data-v="y">${T("yes")}</button><button class="opt huge no ${val === "n" ? "on" : ""}" data-v="n">${T("no")}</button></div>`;
+  else if (fd.t === "choice" || fd.t === "staff" || fd.t === "multi") {
+    const ops = optsOf(fd), isOther = fd.other && val && !ops.some(x => x.v === val);
+    body += `<div class="opts ${ops.length > 5 ? "two" : ""}">${ops.map(x => `<button class="opt ${(fd.t === "multi" ? (val || []).includes(x.v) : val === x.v) ? "on" : ""}" data-v="${esc(x.v)}">${esc(L(x))}${x.v === ME && fd.t !== "multi" ? ` <span class="muted small">(${T("me")})</span>` : ""}</button>`).join("")}
+      ${fd.other ? `<button class="opt ${isOther || W.otherOpen ? "on" : ""}" data-other="1">${T("other")}</button>` : ""}</div>${fd.other && (isOther || W.otherOpen) ? `<input class="big" id="wz_other" placeholder="${T("typeHere")}" value="${esc(isOther ? val : "")}">` : ""}`;
+  } else if (fd.t === "rows") {
+    const rows = val || [];
+    body += `<div class="list">${rows.map((r, i) => { const st = fd.rowState ? fd.rowState(r) : ""; return `<button class="row" data-row="${i}" style="text-align:start;background:none;border-left:0;border-right:0;border-bottom:0;width:100%"><span class="chip num">${i + 1}</span><span class="grow">${esc(fd.rowTitle ? fd.rowTitle(r) || "—" : "—")}</span>${st === "ok" ? '<span class="chip ok">✓</span>' : st === "bad" ? `<span class="chip bad">${LANG === "ar" ? "فرق" : "differs"}</span>` : (fd.rowState ? `<span class="chip warn">${T("count")}?</span>` : "")}${ICON.chev}</button>`; }).join("") || `<div class="muted">${T("nothingYet")}</div>`}</div>
+      <div class="row">${rows.length < fd.max ? `<button class="btn soft grow" id="wzAdd">+ ${T("addItem")}</button>` : ""}${fd.paste ? `<button class="btn alt grow" id="wzPaste">${T("pasteList")}</button>` : ""}</div><p class="muted small num">${rows.length} / ${fd.max}</p>`;
+  } else body += inputHtml(fd, val ?? "");
+  const el = wizShell(L(f.title), W.i / n, body, `<button class="btn alt" id="wzBack" ${W.i === 0 ? "disabled" : ""}>${T("back")}</button><button class="btn" id="wzNext">${W.i === n - 1 ? T("finish") : (fd.opt && (val === "" || val == null || (Array.isArray(val) && !val.length)) ? T("skip") : T("next"))}</button>`);
+  const inp = $(`#wz_${fd.k}`, el);
+  if (inp) { inp.oninput = () => { W.data[fd.k] = inp.value; const nb = $("#wzNext", el); if (W.i < n - 1) nb.textContent = fd.opt && !inp.value ? T("skip") : T("next"); }; if (fd.t !== "time" && fd.t !== "date") setTimeout(() => { try { inp.focus(); const l = inp.value.length; inp.setSelectionRange && inp.type !== "time" && inp.setSelectionRange(l, l); } catch (e) {} }, 60);
+    if (fd.t !== "long") inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#wzNext", el).click(); } }; }
+  const oth = $("#wz_other", el); if (oth) { oth.oninput = () => { W.data[fd.k] = oth.value; }; setTimeout(() => oth.focus(), 60); }
+  el.querySelectorAll(".opt").forEach(b => b.onclick = () => {
+    if (b.dataset.other) { W.otherOpen = true; W.data[fd.k] = ""; return renderWiz(); }
+    const v = b.dataset.v; W.otherOpen = false;
+    if (fd.t === "multi") { const cur = new Set(val || []); if (cur.has(v)) cur.delete(v); else { if (fd.max && cur.size >= fd.max) return toast(`Max ${fd.max}`); cur.add(v); } W.data[fd.k] = [...cur]; return renderWiz(); }
+    W.data[fd.k] = v; if (fd.k === "cat") W.data.type = ""; if (auto) { W.i++; } renderWiz(); });
+  el.querySelectorAll("[data-row]").forEach(b => b.onclick = () => rowEditor(fd, +b.dataset.row));
+  const ad = $("#wzAdd", el); if (ad) ad.onclick = () => rowEditor(fd, -1);
+  const ps = $("#wzPaste", el); if (ps) ps.onclick = () => pasteRows(fd);
+  $("#wzBack", el).onclick = () => { W.otherOpen = false; W.i--; renderWiz(); };
+  $("#wzNext", el).onclick = () => { const v = W.data[fd.k], empty = v === "" || v == null || (Array.isArray(v) && v.length < (fd.min || 1));
+    if (empty && !fd.opt) { toast(T("required")); return; } W.otherOpen = false; W.i++; renderWiz(); };
+}
+function rowEditor(fd, idx) {
+  const rows = W.data[fd.k] || (W.data[fd.k] = []), row = idx >= 0 ? clone(rows[idx]) : {};
+  const m = document.createElement("div"); m.className = "modal";
+  m.innerHTML = `<div class="sheet"><h2>${T("item")} ${idx >= 0 ? idx + 1 : rows.length + 1}</h2>${fd.sub.map(sf => `<div class="field"><label for="rw_${sf.k}">${esc(L(sf.q))}${sf.opt ? ` (${T("optional")})` : ""}</label>${sf.t === "staff" ? `<select class="in" id="rw_${sf.k}"><option value=""></option>${staffList().map(s => `<option value="${esc(s.id)}" ${row[sf.k] === s.id ? "selected" : ""}>${esc(s.short || s.name)}</option>`).join("")}</select>` : `<input class="in ${sf.t === "num" || sf.t === "money" ? "num" : ""}" id="rw_${sf.k}" ${sf.t === "num" || sf.t === "money" ? 'inputmode="decimal"' : ""} autocomplete="off" value="${esc(row[sf.k] ?? "")}">`}</div>`).join("")}
+    <div class="row">${idx >= 0 ? `<button class="btn bad sm" id="rwDel">${T("del")}</button>` : ""}<button class="btn alt grow" id="rwNo">${T("cancel")}</button><button class="btn grow" id="rwOk">${T("save")}</button>${idx >= 0 && idx < rows.length - 1 ? `<button class="btn soft grow" id="rwNext">${T("save")} → ${idx + 2}</button>` : ""}</div></div>`;
+  document.body.appendChild(m);
+  const grab = () => { fd.sub.forEach(sf => { row[sf.k] = $(`#rw_${sf.k}`, m).value.trim(); }); if (idx >= 0) rows[idx] = row; else rows.push(row); };
+  $("#rwNo", m).onclick = () => m.remove(); $("#rwOk", m).onclick = () => { grab(); m.remove(); renderWiz(); };
+  const nx = $("#rwNext", m); if (nx) nx.onclick = () => { grab(); m.remove(); renderWiz(); rowEditor(fd, idx + 1); };
+  const dl = $("#rwDel", m); if (dl) dl.onclick = () => { rows.splice(idx, 1); m.remove(); renderWiz(); };
+  const first = fd.sub.find(sf => (row[sf.k] ?? "") === "" && !sf.opt) || fd.sub[0]; setTimeout(() => { const e = $(`#rw_${first.k}`, m); e && e.focus(); }, 60);
+}
+function pasteRows(fd) {
+  const m = document.createElement("div"); m.className = "modal";
+  m.innerHTML = `<div class="sheet"><h2>${T("pasteList")}</h2><p class="muted small">${LANG === "ar" ? "سطر لكل صنف: الباركود، الوصف، المقاس، كمية النظام (مفصولة بمسافة Tab أو فاصلة)." : "One line per item: barcode, description, size, system quantity (separated by tabs or commas)."}</p>
+    <textarea class="big" id="psTxt" style="font-size:1rem;min-height:220px"></textarea><div class="row"><button class="btn alt grow" id="psNo">${T("cancel")}</button><button class="btn grow" id="psOk">${T("add")}</button></div></div>`;
+  document.body.appendChild(m);
+  $("#psNo", m).onclick = () => m.remove();
+  $("#psOk", m).onclick = () => { const rows = W.data[fd.k] || (W.data[fd.k] = []);
+    $("#psTxt", m).value.split(/\n/).map(l => l.trim()).filter(Boolean).forEach(l => { const parts = l.split(l.includes("\t") ? "\t" : l.includes(";") ? ";" : ",").map(x => x.trim()); if (rows.length >= fd.max) return; const r = {}; fd.paste.forEach((k, i) => { r[k] = parts[i] || ""; }); rows.push(r); });
+    m.remove(); renderWiz(); };
+  setTimeout(() => $("#psTxt", m).focus(), 60);
+}
+function finishForm() {
+  const f = W.f, d = W.data;
+  W.fields.forEach(fd => { if (fd.remember && d[fd.k]) { try { localStorage.setItem(rememberKey(f.id, fd.k), d[fd.k]); } catch (e) {} } });
+  const rec = W.existing ? Object.assign({}, W.existing, { data: d, editedBy: ME, editedAt: Date.now() }) : { form: f.id, date: W.date, at: Date.now(), by: ME, data: d };
+  Data.saveRec(W.recId, rec); toast(T("saved"));
+  const offer = f.id === "stockcheck" && cfgForm("discrepancy").on !== false && (d.items || []).some(it => { const fin = it.recount !== "" && it.recount != null ? it.recount : it.phy; return num(fin) !== null && num(it.sys) !== null && num(fin) !== num(it.sys); });
+  const date = W.date; closeWiz();
+  if (offer) ask(LANG === "ar" ? "توجد فروقات في الجرد" : "The count found differences", LANG === "ar" ? "هل تريد تعبئة ملخص فروقات المخزون الآن؟ الأصناف مضافة تلقائياً." : "Fill in the Stock Discrepancy Summary now? The items are added for you.", LANG === "ar" ? "نعم، ابدأ" : "Yes, start", () => startForm("discrepancy", { date }));
+}
+
+/* ===================== screens ===================== */
+let R = { view: "home" };
+const VIEWS = {};
+const MGR_TABS = [["home", "today", "home"], ["plan", "plan", "plan"], ["printing", "print", "print"], ["forms", "forms", "forms"], ["more", "more", "more"]];
+const STAFF_TABS = [["home", "home", "home"], ["forms", "forms", "forms"], ["records", "records", "rec"], ["more", "more", "more"]];
+function go(view, extra) { R = Object.assign({ view }, extra || {}); try { location.hash = view; } catch (e) {} window.scrollTo(0, 0); render(); }
+function banners() {
+  let h = "";
+  if (S.mode === "local") h += `<div class="banner">${T("localOnly")}</div>`;
+  if (!S.canWrite) h += `<div class="banner">${T("readOnly")}</div>`;
+  if (REAL) h += `<div class="banner row"><span class="grow">${LANG === "ar" ? "أنت تشاهد كـ" : "You are viewing as"} <b>${esc(shortName(ME))}</b></span><button class="btn sm" id="bnBack">${T("backToMe")}</button></div>`;
+  return h;
+}
+function render() {
+  const app = $("#app");
+  if (!S.ready) { app.innerHTML = `<main><div class="card stack"><b>${T("loading")}</b>${S.slow ? `<p class="muted small">${LANG === "ar" ? "تعذّر الوصول إلى البيانات حتى الآن. ما زلنا نحاول." : "The store data can't be reached yet. Still trying."}</p>` : ""}</div></main>`; return; }
+  if (!S.cfg || !S.cfg.staff) return renderSetup(app);
+  if (!ME || !staff(ME)) return renderLogin(app);
+  const me = staff(ME), mgr = isMgrRole(me.role), tabs = mgr ? MGR_TABS : STAFF_TABS;
+  if (!VIEWS[R.view]) R.view = "home";
+  const st = S.cfg.store || {};
+  app.innerHTML = `<div class="top"><div class="who"><b>${esc(me.short || me.name)}</b><span>${esc(L(ROLES[me.role]))} · ${esc(st.name || "")}</span></div><button class="pill" id="tpLang">${T("lang")}</button></div>
+    <main>${banners()}${VIEWS[R.view](me, mgr)}</main>
+    <nav class="tabs"><div>${tabs.map(([v, k, ic]) => `<button data-go="${v}" class="${R.view === v || (v === "more" && !tabs.some(t => t[0] === R.view)) ? "on" : ""}">${ICON[ic]}<span>${T(k)}</span></button>`).join("")}</div></nav>`;
+  bind(app);
+}
+function bind(app) {
+  app.querySelectorAll("[data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
+  app.querySelectorAll("[data-form]").forEach(b => b.onclick = () => startForm(b.dataset.form, { date: b.dataset.date || today(), group: b.dataset.group || null }));
+  const lg = $("#tpLang", app); if (lg) lg.onclick = () => { setLang(LANG === "ar" ? "en" : "ar"); render(); };
+  const bb = $("#bnBack", app); if (bb) bb.onclick = () => { ME = REAL; REAL = null; go("home"); };
+  const hook = HOOKS[R.view]; if (hook) hook(app);
+}
+const HOOKS = {};
+const taskBtn = (t, showWho) => `<button class="task ${stClass(t)}" data-form="${t.id}" data-date="${t.date}" ${t.group ? `data-group="${t.group}"` : ""}><span class="grow"><b>${esc(t.title)}</b><small>${showWho ? esc(shortName(t.who) || T("nobody")) + " · " : ""}${t.carried ? (LANG === "ar" ? "من هذا الأسبوع" : "due earlier this period") + " · " : ""}${T("dueBy")} ${esc(t.due)}</small></span>${stChip(t)}</button>`;
+const tile = id => `<button class="tile" data-form="${id}"><span class="let">${esc(FORMS[id].letter)}</span><b>${esc(L(FORMS[id].title))}</b></button>`;
+
+/* ---- first run ---- */
+function renderSetup(app) {
+  app.innerHTML = `<main>${S.mode === "local" ? `<div class="banner">${T("localOnly")}</div>` : ""}<div class="card stack"><h1>${T("appName")}</h1><p class="muted">Set up the store once. Everything can be changed later in Settings.</p>
+    <div class="field"><label for="suName">Store name (as printed on the forms)</label><input class="in" id="suName"></div><div class="field"><label for="suCode">Location code</label><input class="in" id="suCode"></div>
+    <div class="field"><label for="suTeam">Team: one line per person, as ID, full name, role</label><textarea class="in" id="suTeam" rows="12" placeholder="2915, Thamer Alharthi, Store Manager"></textarea><span class="small muted">Roles: Store Manager, Deputy Store Manager, Stock Controller, Senior Sales, Sales</span></div>
+    <button class="btn" id="suGo">Set up the store</button><p class="small" id="suMsg" style="color:var(--bad)"></p></div></main>`;
+  let seed = { forms: {}, huddle: {}, tryon: {} };
+  const roleName = { sm: "Store Manager", dsm: "Deputy Store Manager", sc: "Stock Controller", ss: "Senior Sales", sa: "Sales" };
+  fetch("seed.json").then(r => r.json()).then(sd => { seed = sd; if (sd.store) { $("#suName", app).value = sd.store.name || ""; $("#suCode", app).value = sd.store.code || ""; }
+    if (sd.staff) $("#suTeam", app).value = Object.entries(sd.staff).sort((a, b) => (a[1].ord || 0) - (b[1].ord || 0)).map(([id, x]) => `${id}, ${x.name}, ${roleName[x.role]}`).join("\n"); }).catch(() => {});
+  $("#suGo", app).onclick = () => {
+    const staffMap = {}; let ord = 0, hasMgr = false;
+    $("#suTeam", app).value.split("\n").map(l => l.trim()).filter(Boolean).forEach(l => { const p = l.split(",").map(x => x.trim()); const id = (p[0] || "").replace(/[^A-Za-z0-9_-]/g, ""), name = p[1] || ""; if (!id || !name) return;
+      const rt = (p[2] || "").toLowerCase(), role = /deputy/.test(rt) ? "dsm" : /manager/.test(rt) ? "sm" : /stock/.test(rt) ? "sc" : /senior/.test(rt) ? "ss" : "sa"; if (role === "sm" || role === "dsm") hasMgr = true;
+      const w = name.split(/\s+/); staffMap[id] = { name, short: w.length > 1 ? w[0] + " " + w[w.length - 1] : name, role, ord: ++ord, active: true }; });
+    if (!$("#suName", app).value.trim() || !ord || !hasMgr) { $("#suMsg", app).textContent = "Add the store name and the team, with at least one Store Manager."; return; }
+    Data.setCfg({ store: { name: $("#suName", app).value.trim(), code: $("#suCode", app).value.trim() }, staff: staffMap, forms: seed.forms || {}, huddle: seed.huddle || {}, tryon: seed.tryon || {}, liveFrom: today() });
+  };
+}
+/* ---- sign in ---- */
+let LG = { id: null, pin: "", first: "", stage: "" };
+function renderLogin(app) {
+  const list = staffList();
+  if (!LG.id) {
+    app.innerHTML = `<div class="top"><div class="who"><b>${T("appName")}</b><span>${esc(storeLine())}</span></div><button class="pill" id="tpLang">${T("lang")}</button></div><main>${S.mode === "local" ? `<div class="banner">${T("localOnly")}</div>` : ""}<h1>${T("whoAreYou")}</h1>
+      <div class="stack">${list.map(s => `<button class="task" data-who="${esc(s.id)}"><span class="grow"><b>${esc(s.short || s.name)}</b><small>${esc(L(ROLES[s.role]))} · ${esc(s.id)}</small></span>${ICON.chev}</button>`).join("")}</div></main>`;
+    $("#tpLang", app).onclick = () => { setLang(LANG === "ar" ? "en" : "ar"); render(); };
+    app.querySelectorAll("[data-who]").forEach(b => b.onclick = () => { const s = staff(b.dataset.who); LG = { id: s.id, pin: "", first: "", stage: "enter" }; render(); });
+    return;
+  }
+  const s = staff(LG.id), title = LG.stage === "enter" ? (s.pin ? T("enterPin") : T("firstPin")) : LG.stage === "new" ? T("newPin") : T("repeatPin");
+  app.innerHTML = `<main><button class="pill" id="lgBack" style="align-self:flex-start">← ${T("back")}</button><div class="stack" style="text-align:center;gap:18px;margin-top:12px"><div><h1>${esc(s.short || s.name)}</h1><p class="muted">${title}</p></div>
+    <div class="dots" aria-label="PIN">${[0, 1, 2, 3].map(i => `<i class="${i < LG.pin.length ? "on" : ""}"></i>`).join("")}</div><p class="small" style="color:var(--bad);min-height:1.4em" id="lgMsg">${esc(LG.msg || "")}</p>
+    <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, "", 0, "⌫"].map(k => k === "" ? "<span></span>" : `<button data-k="${k}">${k}</button>`).join("")}</div></div></main>`;
+  $("#lgBack", app).onclick = () => { LG = { id: null }; render(); };
+  app.querySelectorAll("[data-k]").forEach(b => b.onclick = async () => {
+    const k = b.dataset.k; LG.msg = "";
+    if (k === "⌫") LG.pin = LG.pin.slice(0, -1); else if (LG.pin.length < 4) LG.pin += k;
+    if (LG.pin.length === 4) {
+      const h = await pinHash(LG.id, LG.pin);
+      if (LG.stage === "enter") { if (s.pin) { if (h === s.pin) return signIn(LG.id); LG.pin = ""; LG.msg = T("wrongPin"); } else if (LG.pin === "0000") { LG.pin = ""; LG.stage = "new"; } else { LG.pin = ""; LG.msg = T("wrongPin"); } }
+      else if (LG.stage === "new" && LG.pin === "0000") { LG.pin = ""; LG.msg = T("notZeros"); }
+      else if (LG.stage === "new") { LG.first = h; LG.pin = ""; LG.stage = "repeat"; }
+      else { if (h === LG.first) { Data.saveCfg({ staff: { [LG.id]: { pin: h } } }); return signIn(LG.id); } LG.pin = ""; LG.stage = "new"; LG.msg = T("pinMismatch"); }
+    }
+    render();
+  });
+}
+function signIn(id) { ME = id; REAL = null; LG = { id: null }; try { localStorage.setItem("sb-me", id); } catch (e) {} const s = staff(id); if (s.lang) setLang(s.lang); go("home"); }
+function signOut() { ME = null; REAL = null; try { localStorage.removeItem("sb-me"); } catch (e) {} render(); }
+
+/* ---- home ---- */
+VIEWS.home = (me, mgr) => {
+  const d = today(), tasks = tasksFor(d), mine = tasks.filter(t => t.who === ME), free = tasks.filter(t => !t.who && !t.done);
+  const events = formsOn().filter(id => cfgForm(id).freq === "event" && (mgr || !FORMS[id].mgr));
+  let h = "";
+  if (mgr) {
+    const done = tasks.filter(t => t.done).length, late = tasks.filter(t => t.late).length;
+    h += `<div class="sec"><h1>${T("today")}</h1><span>${DOW[parseD(d).getDay()]} ${fmtD(d)}</span></div>
+      <div class="kpis"><div class="kpi"><b class="num">${done}/${tasks.length}</b><span>${T("done")}</span></div><div class="kpi"><b class="num" style="color:${late ? "var(--bad)" : "inherit"}">${late}</b><span>${T("late")}</span></div><div class="kpi"><b class="num" style="color:${free.length ? "var(--warn)" : "inherit"}">${free.length}</b><span>${T("openTasks")}</span></div></div>
+      <div class="bar"><i style="width:${tasks.length ? Math.round(done / tasks.length * 100) : 0}%"></i></div>`;
+    const ppl = staffList().filter(s => !isOff(d, s.id)).map(s => { const ts = tasks.filter(t => t.who === s.id); return { s, n: ts.length, dn: ts.filter(t => t.done).length, lt: ts.filter(t => t.late).length }; }).filter(x => x.n);
+    h += `<div class="sec"><h2>${LANG === "ar" ? "الفريق اليوم" : "The team today"}</h2><button class="btn sm soft" data-go="plan">${T("plan")}</button></div>
+      <div class="list">${ppl.map(x => `<div class="row"><div class="grow"><b>${esc(x.s.short || x.s.name)}</b><div class="bar" style="margin-top:6px"><i style="width:${Math.round(x.dn / x.n * 100)}%"></i></div></div><span class="chip num ${x.dn === x.n ? "ok" : ""}">${x.dn}/${x.n}</span>${x.lt ? `<span class="chip bad num">${x.lt} ${T("late")}</span>` : ""}</div>`).join("") || `<div class="muted">${T("nothingYet")}</div>`}</div>
+      <div class="sec"><h2>${LANG === "ar" ? "كل مهام اليوم" : "All of today's tasks"}</h2></div><div class="stack">${tasks.map(t => taskBtn(t, true)).join("")}</div>`;
+  } else {
+    h += `<div class="sec"><h1>${T("myTasks")}</h1><span>${DOW[parseD(d).getDay()]} ${fmtD(d)}</span></div><div class="stack">${mine.map(t => taskBtn(t)).join("") || `<div class="card muted">${T("noTasks")}</div>`}</div>`;
+    if (free.length) h += `<div class="sec"><h2>${T("openTasks")}</h2></div><div class="stack">${free.map(t => taskBtn(t)).join("")}</div>`;
+  }
+  h += `<div class="sec"><h2>${T("logSomething")}</h2></div><div class="tiles">${events.map(tile).join("")}</div>`;
+  return h;
+};
+VIEWS.forms = (me, mgr) => `<h1>${T("allForms")}</h1><div class="tiles">${formsOn().filter(id => mgr || !FORMS[id].mgr).map(tile).join("")}</div>`;
+
+/* ---- records ---- */
+function recSummary(r) {
+  const f = FORMS[r.form]; if (!f) return "";
+  if (f.kind === "check") { const a = Object.values((r.data && r.data.items) || {}); return `${a.filter(x => x.v === "y").length}/${f.items.length} ✓` + (r.done ? "" : " · " + T("open")); }
+  const d = r.data || {}; const bits = [];
+  for (const fd of fieldsOf(f)) { const v = d[fd.k]; if (v === "" || v == null || fd.t === "rows" || fd.t === "long") continue; bits.push(fd.t === "staff" ? shortName(v) : Array.isArray(v) ? v.length : fd.t === "yesno" ? (v === "y" ? "Yes" : "No") : fd.t === "choice" ? L((optsFromStatic(fd, d).find(x => x.v === v)) || { en: v }) : v); if (bits.length >= 3) break; }
+  if (d.items) bits.push(`${d.items.length} ${T("entries")}`);
+  return bits.join(" · ");
+}
+const optsFromStatic = (fd, d) => (fd.optsFrom ? fd.optsFrom(d) : fd.opts || []);
+VIEWS.records = (me, mgr) => {
+  const fid = R.form || "", ym = R.ym || ymOf(today());
+  let list = [...S.recs.entries()].map(([id, r]) => ({ id, ...r })).filter(r => r.ym === ym && (!fid || r.form === fid) && FORMS[r.form] && (mgr || r.by === ME || (r.data && r.data.items && Object.values(r.data.items).some(a => a.by === ME))));
+  list.sort((a, b) => (b.date + b.at).localeCompare(a.date + a.at));
+  const months = []; for (let i = 0, d = today().slice(0, 8) + "01"; i < 6; i++) { months.push(ymOf(d)); d = addDays(d, -1).slice(0, 8) + "01"; }
+  return `<h1>${T("records")}</h1><div class="row"><select class="in grow" id="rcForm"><option value="">${T("allForms")}</option>${formsOn().map(id => `<option value="${id}" ${fid === id ? "selected" : ""}>${esc(L(FORMS[id].title))}</option>`).join("")}</select>
+    <select class="in" id="rcYm" style="width:auto">${months.map(m => `<option value="${m}" ${m === ym ? "selected" : ""}>${monthLabel(m)}</option>`).join("")}</select></div>
+    <div class="list">${list.slice(0, 200).map(r => `<button data-rec="${esc(r.id)}" class="row" style="text-align:start;background:none;border-left:0;border-right:0;border-bottom:0;width:100%"><span class="grow"><b>${esc(L(FORMS[r.form].title))}</b><div class="small muted">${fmtD(r.date)} · ${esc(shortName(r.by))} · ${esc(recSummary(r))}</div></span>${ICON.chev}</button>`).join("") || `<div class="muted">${T("nothingYet")}</div>`}</div>`;
+};
+HOOKS.records = app => {
+  $("#rcForm", app).onchange = e => { R.form = e.target.value; render(); };
+  $("#rcYm", app).onchange = async e => { R.ym = e.target.value; await loadMonth(R.ym); render(); };
+  app.querySelectorAll("[data-rec]").forEach(b => b.onclick = () => recDetail(b.dataset.rec));
+};
+function recDetail(id) {
+  const r = S.recs.get(id); if (!r) return; const f = FORMS[r.form], d = r.data || {}; let rows = "";
+  if (f.kind === "check") rows = f.items.map(it => { const a = d.items && d.items[it.id]; return `<tr><td>${a ? (a.v === "y" ? "✓" : a.v === "na" ? "N/A" : "✕") : "–"}</td><td>${esc(L(it))}${a && a.note ? `<div class="muted">${esc(a.note)}</div>` : ""}</td><td class="muted small">${a ? esc(shortName(a.by)) + "<br>" + new Date(a.at).toTimeString().slice(0, 5) : ""}</td></tr>`; }).join("");
+  else rows = fieldsOf(f).map(fd => { const v = d[fd.k]; let s = ""; if (fd.t === "rows") s = (v || []).map((x, i) => `${i + 1}. ${Object.values(x).map(y => staff(y) ? shortName(y) : y).filter(y => y !== "" && y != null).join(" · ")}`).join("<br>"); else if (fd.t === "staff") s = esc(nameId(v)); else if (Array.isArray(v)) s = esc(v.map(x => staff(x) ? shortName(x) : L(optsFromStatic(fd, d).find(z => z.v === x) || { en: x })).join(", ")); else if (fd.t === "yesno") s = v === "y" ? T("yes") : v === "n" ? T("no") : ""; else if (fd.t === "choice") s = esc(L(optsFromStatic(fd, d).find(z => z.v === v) || { en: v || "" })); else s = esc(v ?? ""); return `<tr><th>${esc(L(fd.q))}</th><td>${s}</td></tr>`; }).join("");
+  const canEdit = iAmMgr() || r.by === ME;
+  const m = document.createElement("div"); m.className = "modal";
+  m.innerHTML = `<div class="sheet"><div class="row"><h2 class="grow">${esc(L(f.title))}</h2><button class="pill" id="rdX">✕</button></div><p class="muted small">${fmtD(r.date)} · ${esc(nameId(r.by))} · ${new Date(r.at).toTimeString().slice(0, 5)}${r.done ? ` · ✓ ${esc(shortName(r.doneBy))} ${new Date(r.doneAt).toTimeString().slice(0, 5)}` : ""}</p>
+    <div class="scroll"><table class="t">${rows}</table></div><div class="row">${canEdit ? `<button class="btn alt grow" id="rdEdit">${T("edit")}</button>` : ""}${iAmMgr() ? `<button class="btn alt grow" id="rdPrint">${T("print")}</button><button class="btn bad" id="rdDel">${T("del")}</button>` : ""}</div></div>`;
+  document.body.appendChild(m);
+  $("#rdX", m).onclick = () => m.remove();
+  const e = $("#rdEdit", m); if (e) e.onclick = () => { m.remove(); f.kind === "check" ? (startForm(r.form, { date: r.date }), W && (W.i = 0), renderWiz()) : startForm(r.form, { date: r.date, editId: id }); };
+  const p = $("#rdPrint", m); if (p) p.onclick = () => { m.remove(); const per = f.kind === "log" ? [r.date.slice(0, 8) + "01", r.date.slice(0, 8) + "31"] : [r.date, r.date]; preview(f.id, per[0], per[1]); };
+  const dl = $("#rdDel", m); if (dl) dl.onclick = () => { m.remove(); ask(T("del") + "?", L(f.title) + " · " + fmtD(r.date), T("del"), () => { Data.delRec(id); toast(T("done")); }, true); };
+}
+
+/* ---- plan: who does what, on any day ---- */
+VIEWS.plan = () => {
+  const d = R.date || today(), p = planOf(d), tasks = tasksFor(d), days = Array.from({ length: 15 }, (_, i) => addDays(today(), i - 1));
+  const people = staffList(), on = people.filter(s => !isOff(d, s.id));
+  const sel = t => `<select class="in" data-who="${esc(t.key)}" aria-label="${T("assignTo")}"><option value="">${T("nobody")}</option>${on.map(s => `<option value="${esc(s.id)}" ${t.who === s.id ? "selected" : ""}>${esc(s.short || s.name)}</option>`).join("")}</select>`;
+  const checks = formsOn().filter(id => FORMS[id].kind === "check" && !FORMS[id].weekly);
+  const skipped = formsOn().filter(id => p.skip && p.skip[id]);
+  return `<div class="sec"><h1>${T("plan")}</h1><span>${(LANG === "ar" ? DOW_AR : DOW)[parseD(d).getDay()]} ${fmtD(d)}</span></div>
+    <div class="days">${days.map(x => `<button data-day="${x}" class="${x === d ? "on" : ""}"><span>${x === today() ? T("today") : (LANG === "ar" ? DOW_AR : DOW)[parseD(x).getDay()]}</span><b class="num">${+x.slice(8)}</b><span>${MON[+x.slice(5, 7) - 1].slice(0, 3)}</span></button>`).join("")}</div>
+    <div class="row"><input class="in" type="date" id="plDate" value="${d}" style="width:auto" aria-label="${T("date")}"><button class="btn sm alt" id="plCopy">${LANG === "ar" ? "نسخ من اليوم السابق" : "Copy the day before"}</button></div>
+    <div class="sec"><h2>${T("onDuty")}</h2><span class="num">${on.length}/${people.length}</span></div>
+    <div class="row">${people.map(s => `<button class="chip ${isOff(d, s.id) ? "" : "acc"}" data-duty="${esc(s.id)}" style="border:0;padding:8px 12px;font-size:.88rem">${isOff(d, s.id) ? "○" : "●"} ${esc(s.short || s.name)}</button>`).join("")}</div>
+    <div class="sec"><h2>${LANG === "ar" ? "المهام" : "Tasks"}</h2><span class="num">${tasks.length}</span></div>
+    <div class="stack">${tasks.map(t => `<div class="card stack" style="border-inline-start:6px solid var(--${t.done ? "ok" : t.late ? "bad" : "line"})"><div class="row"><b class="grow">${esc(t.title)}</b>${t.done ? `<span class="chip ok">✓</span>` : ""}</div>
+      <div class="row"><div class="grow" style="min-width:150px">${sel(t)}</div><input class="in num" type="time" data-due="${esc(t.key)}" value="${esc(t.due)}" style="width:auto" aria-label="${T("dueBy")}">${t.group ? "" : `<button class="btn sm alt" data-skip="${t.id}" title="Skip this day">${LANG === "ar" ? "تخطي" : "Skip"}</button>`}</div></div>`).join("") || `<div class="card muted">${T("nothingYet")}</div>`}</div>
+    ${checks.length ? `<div class="sec"><h2>${LANG === "ar" ? "تقسيم القوائم على الفريق" : "Share a checklist between people"}</h2></div><div class="list">${checks.map(id => `<label class="row"><input type="checkbox" data-split="${id}" ${isSplit(id, d) ? "checked" : ""} style="width:22px;height:22px"><span class="grow">${esc(L(FORMS[id].title))}<div class="small muted">${groupsOf(id).map(g => esc(L(GROUPS[g]))).join(" · ")}</div></span></label>`).join("")}</div>` : ""}
+    ${skipped.length ? `<div class="sec"><h2>${LANG === "ar" ? "تم تخطيها هذا اليوم" : "Skipped on this day"}</h2></div><div class="row">${skipped.map(id => `<button class="chip" data-unskip="${id}" style="border:0;padding:8px 12px">↩ ${esc(L(FORMS[id].title))}</button>`).join("")}</div>` : ""}`;
+};
+HOOKS.plan = app => {
+  const d = R.date || today(), edit = fn => { const p = clone(planOf(d)); fn(p); Data.savePlan(d, p); };
+  app.querySelectorAll("[data-day]").forEach(b => b.onclick = () => { R.date = b.dataset.day; render(); });
+  $("#plDate", app).onchange = e => { if (e.target.value) { R.date = e.target.value; render(); } };
+  $("#plCopy", app).onclick = () => { const prev = planOf(addDays(d, -1)); edit(p => { p.tasks = clone(prev.tasks || {}); p.split = clone(prev.split || {}); p.off = clone(prev.off || {}); }); toast(T("saved")); };
+  app.querySelectorAll("[data-duty]").forEach(b => b.onclick = () => edit(p => { p.off = p.off || {}; if (p.off[b.dataset.duty]) delete p.off[b.dataset.duty]; else p.off[b.dataset.duty] = true; }));
+  app.querySelectorAll("[data-who]").forEach(s => s.onchange = () => edit(p => { p.tasks = p.tasks || {}; p.tasks[s.dataset.who] = Object.assign({}, p.tasks[s.dataset.who], { who: s.value }); }));
+  app.querySelectorAll("[data-due]").forEach(s => s.onchange = () => edit(p => { p.tasks = p.tasks || {}; p.tasks[s.dataset.due] = Object.assign({}, p.tasks[s.dataset.due], { due: s.value }); }));
+  app.querySelectorAll("[data-skip]").forEach(b => b.onclick = () => edit(p => { p.skip = p.skip || {}; p.skip[b.dataset.skip] = true; }));
+  app.querySelectorAll("[data-unskip]").forEach(b => b.onclick = () => edit(p => { delete p.skip[b.dataset.unskip]; }));
+  app.querySelectorAll("[data-split]").forEach(c => c.onchange = () => edit(p => { p.split = p.split || {}; p.split[c.dataset.split] = c.checked; }));
+};
+
+/* ---- print centre ---- */
+function rangeOf(k) { const t = today(); if (k === "yesterday") return [addDays(t, -1), addDays(t, -1)]; if (k === "week") return [weekStart(t), addDays(weekStart(t), 6)]; if (k === "month") return [t.slice(0, 8) + "01", ymd(new Date(+t.slice(0, 4), +t.slice(5, 7), 0))]; if (k === "lastmonth") { const e = addDays(t.slice(0, 8) + "01", -1); return [e.slice(0, 8) + "01", e]; } return [t, t]; }
+const PRINT_IDS = () => { const seen = new Set(), out = []; formsOn().forEach(id => { const k = FORMS[id].printAs || id; if (!seen.has(k)) { seen.add(k); out.push(id); } }); return out; };
+const printTitle = id => (FORMS[id].printAs === "openclose" ? (LANG === "ar" ? "قائمة الافتتاح والإغلاق" : "Opening & Closing Checklist") : L(FORMS[id].title));
+VIEWS.printing = () => {
+  const k = R.rk || "today", [a, b] = R.rk === "custom" ? [R.from || today(), R.to || today()] : rangeOf(k);
+  const rows = PRINT_IDS().map(id => ({ id, n: pagesFor(id, a, b).length }));
+  const ready = rows.filter(r => r.n);
+  return `<h1>${T("print")}</h1><div class="row">${[["today", T("today")], ["yesterday", LANG === "ar" ? "أمس" : "Yesterday"], ["week", LANG === "ar" ? "هذا الأسبوع" : "This week"], ["month", LANG === "ar" ? "هذا الشهر" : "This month"], ["lastmonth", LANG === "ar" ? "الشهر الماضي" : "Last month"], ["custom", LANG === "ar" ? "تواريخ أخرى" : "Other dates"]].map(([v, l]) => `<button class="chip ${k === v ? "acc" : ""}" data-rk="${v}" style="border:0;padding:9px 14px;font-size:.9rem">${l}</button>`).join("")}</div>
+    ${k === "custom" ? `<div class="row"><input class="in" type="date" id="prFrom" value="${a}" style="width:auto"><span>→</span><input class="in" type="date" id="prTo" value="${b}" style="width:auto"></div>` : `<p class="muted small num">${fmtD(a)}${a !== b ? " → " + fmtD(b) : ""}</p>`}
+    <button class="btn" id="prAll" ${ready.length ? "" : "disabled"}>${LANG === "ar" ? "ملف PDF واحد لكل ما هو جاهز" : "One PDF with everything that is ready"} (${ready.reduce((s, r) => s + r.n, 0)} ${LANG === "ar" ? "صفحة" : "pages"})</button>
+    <div class="list">${rows.map(r => `<div class="row"><span class="chip acc">${esc(FORMS[r.id].letter)}</span><span class="grow"><b>${esc(printTitle(r.id))}</b><div class="small muted num">${r.n ? `${r.n} ${LANG === "ar" ? "صفحة" : r.n === 1 ? "page" : "pages"}` : (LANG === "ar" ? "لا توجد بيانات في هذه الفترة" : "nothing filled in for these dates")}</div></span>
+      ${r.n ? `<button class="btn sm" data-pv="${r.id}">${LANG === "ar" ? "عرض" : "View"}</button>` : ""}<button class="btn sm alt" data-blank="${r.id}">${LANG === "ar" ? "فارغ" : "Blank"}</button></div>`).join("")}</div>
+    <div class="sec"><h2>${LANG === "ar" ? "غلاف وفهرس الملف" : "Binder cover and index"}</h2></div><div class="row"><button class="btn alt grow" data-static="cover">${LANG === "ar" ? "الغلاف" : "Cover page"}</button><button class="btn alt grow" data-static="index">${LANG === "ar" ? "الفهرس" : "Table of contents"}</button></div>`;
+};
+HOOKS.printing = app => {
+  const [a, b] = R.rk === "custom" ? [R.from || today(), R.to || today()] : rangeOf(R.rk || "today");
+  app.querySelectorAll("[data-rk]").forEach(x => x.onclick = async () => { R.rk = x.dataset.rk; if (R.rk === "lastmonth") await loadMonth(rangeOf("lastmonth")[0].slice(0, 7)); render(); });
+  const f1 = $("#prFrom", app), t1 = $("#prTo", app); if (f1) { f1.onchange = async () => { R.from = f1.value; await loadMonth(ymOf(R.from)); render(); }; t1.onchange = () => { R.to = t1.value; render(); }; }
+  app.querySelectorAll("[data-pv]").forEach(x => x.onclick = () => preview(x.dataset.pv, a, b));
+  app.querySelectorAll("[data-blank]").forEach(x => x.onclick = () => preview(x.dataset.blank, a, b, true));
+  app.querySelectorAll("[data-static]").forEach(x => x.onclick = () => showPages(SHEETS[x.dataset.static](), x.dataset.static));
+  $("#prAll", app).onclick = () => showPages(PRINT_IDS().flatMap(id => pagesFor(id, a, b)), `binder_${a}${a !== b ? "_" + b : ""}`);
+};
+function preview(id, a, b, blank) { const pages = pagesFor(id, a, b, blank); if (!pages.length) return toast(T("nothingYet")); showPages(pages, `${FORMS[id].printAs || id}${blank ? "_blank" : "_" + a + (a !== b ? "_" + b : "")}`); }
+async function showPages(pages, name) {
+  const m = document.createElement("div"); m.className = "modal";
+  m.innerHTML = `<div class="sheet" style="max-height:96%"><div class="row"><h2 class="grow num">${pages.length} ${LANG === "ar" ? "صفحة" : pages.length === 1 ? "page" : "pages"}</h2><button class="pill" id="pvX">✕</button></div>
+    <button class="btn" id="pvSave">${LANG === "ar" ? "حفظ كملف PDF للطباعة" : "Save as PDF to print"}</button><p class="small muted" id="pvMsg">${LANG === "ar" ? "اطبع الملف ثم وقّع بالقلم." : "Print the file, then sign by pen."}</p><div class="pages" id="pvPages"></div></div>`;
+  document.body.appendChild(m);
+  $("#pvX", m).onclick = () => m.remove();
+  $("#pvSave", m).onclick = async () => { const btn = $("#pvSave", m); btn.disabled = true;
+    try { const blob = await makePdf(pages, (i, n) => { $("#pvMsg", m).textContent = `${i} / ${n}`; }); $("#pvMsg", m).textContent = ""; await savePdf(blob, name + ".pdf"); } catch (e) { console.error(e); $("#pvMsg", m).textContent = (LANG === "ar" ? "تعذّر إنشاء الملف: " : "Could not build the PDF: ") + (e.message || e); }
+    btn.disabled = false; };
+  const box = $("#pvPages", m);
+  for (const pg of pages.slice(0, 12)) { if (!m.isConnected) return; try { const cv = await renderPage(pg, 110); const im = new Image(); im.alt = "Form page"; im.src = cv.toDataURL("image/jpeg", 0.85); box.appendChild(im); } catch (e) { const p = document.createElement("p"); p.className = "banner"; p.textContent = String(e.message || e); box.appendChild(p); } }
+  if (pages.length > 12) { const p = document.createElement("p"); p.className = "muted small"; p.textContent = LANG === "ar" ? `تُعرض أول 12 صفحة. الملف يحتوي كل الصفحات.` : `Showing the first 12 pages. The PDF has all ${pages.length}.`; box.appendChild(p); }
+}
+
+/* ---- binder check ---- */
+function expectedDays(id, ym) {               // how many times a form should have been done in a month, up to today
+  const c = cfgForm(id); if (c.on === false || c.freq === "event" || c.freq === "quarterly") return null;
+  const last = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(), t = today(); let due = [], seen = new Set();
+  for (let i = 1; i <= last; i++) { const d = `${ym}-${pad2(i)}`; if (d > t) break; if (d < ((S.cfg && S.cfg.liveFrom) || "")) continue; const sd = schedDate(id, d); if (sd === d && !seen.has(d)) { seen.add(d); due.push(d); } }
+  return due;
+}
+VIEWS.binder = () => {
+  const ym = R.ym || ymOf(today()), filed = (S.binder[ym] && S.binder[ym].filed) || {};
+  const months = []; for (let i = 0, d = today().slice(0, 8) + "01"; i < 6; i++) { months.push(ymOf(d)); d = addDays(d, -1).slice(0, 8) + "01"; }
+  const a = ym + "-01", b = ym + "-31";
+  const rows = BINDER.map(([letter, title, ids]) => {
+    let n = 0, miss = [], exp = 0;
+    ids.forEach(id => { if (cfgForm(id).on === false) return; n += recsOf(id, a, b).length; const due = expectedDays(id, ym); if (due) { exp += due.length; due.forEach(d => { if (!taskDone(id, d, null)) miss.push(`${+d.slice(8)}`); }); } });
+    const uniq = [...new Set(miss)];
+    return { letter, title, ids, n, exp, miss: uniq, f: filed[letter] };
+  });
+  const ok = rows.filter(r => r.f).length;
+  return `<div class="sec"><h1>${T("binder")}</h1><select class="in" id="bdYm" style="width:auto">${months.map(m => `<option value="${m}" ${m === ym ? "selected" : ""}>${monthLabel(m)}</option>`).join("")}</select></div>
+    <p class="muted">${LANG === "ar" ? "لكل حرف في الفهرس: ما تم تعبئته، ما ينقص، وهل طُبع وحُفظ في الملف." : "For each letter in the table of contents: what is filled in, what is missing, and whether it is printed and filed."}</p>
+    <div class="kpis"><div class="kpi"><b class="num">${ok}/${rows.length}</b><span>${LANG === "ar" ? "مطبوع ومحفوظ" : "printed and filed"}</span></div><div class="kpi"><b class="num">${rows.reduce((s, r) => s + r.n, 0)}</b><span>${T("entries")}</span></div><div class="kpi"><b class="num" style="color:${rows.some(r => r.miss.length) ? "var(--bad)" : "inherit"}">${rows.reduce((s, r) => s + r.miss.length, 0)}</b><span>${LANG === "ar" ? "أيام ناقصة" : "missing days"}</span></div></div>
+    <div class="list">${rows.map(r => `<div class="stack" style="gap:8px"><div class="row"><span class="chip acc">${r.letter}</span><b class="grow">${esc(r.title)}</b>${r.miss.length ? `<span class="chip bad num">${r.miss.length} ${LANG === "ar" ? "ناقص" : "missing"}</span>` : r.exp ? `<span class="chip ok">${LANG === "ar" ? "مكتمل" : "complete"}</span>` : `<span class="chip num">${r.n}</span>`}</div>
+      ${r.miss.length ? `<div class="small muted">${LANG === "ar" ? "أيام ناقصة:" : "Missing on day:"} <span class="num">${r.miss.slice(0, 31).join(", ")}</span></div>` : ""}
+      <div class="row"><label class="row grow" style="gap:8px"><input type="checkbox" data-filed="${r.letter}" ${r.f ? "checked" : ""} style="width:22px;height:22px"><span>${LANG === "ar" ? "مطبوع وموقّع ومحفوظ في الملف" : "Printed, signed and filed"}${r.f ? ` <span class="muted small">· ${esc(shortName(r.f.by))} ${fmtD(ymd(new Date(r.f.at)))}</span>` : ""}</span></label>${r.ids.length ? `<button class="btn sm alt" data-bpv="${r.ids[0]}">${T("print")}</button>` : ""}</div></div>`).join("")}</div>`;
+};
+HOOKS.binder = app => {
+  const ym = R.ym || ymOf(today());
+  $("#bdYm", app).onchange = async e => { R.ym = e.target.value; await loadMonth(R.ym); render(); };
+  app.querySelectorAll("[data-filed]").forEach(c => c.onchange = () => { const doc = clone(S.binder[ym] || { filed: {} }); doc.filed = doc.filed || {}; if (c.checked) doc.filed[c.dataset.filed] = { by: ME, at: Date.now() }; else delete doc.filed[c.dataset.filed]; Data.saveDoc("binder", ym, doc); });
+  app.querySelectorAll("[data-bpv]").forEach(b => b.onclick = () => preview(b.dataset.bpv, ym + "-01", ym + "-31"));
+};
+
+/* ---- weekly review ---- */
+VIEWS.review = () => {
+  const ws = R.ws || weekStart(today()), we = addDays(ws, 6), id = "w" + ws, rv = S.reviews[id];
+  let total = 0, done = 0; const gaps = [], issues = [];
+  for (let d = ws; d <= we && d <= today(); d = addDays(d, 1)) if (d >= ((S.cfg && S.cfg.liveFrom) || "")) tasksFor(d).filter(t => !t.group && !t.carried).forEach(t => { total++; if (t.done) done++; else gaps.push(`${DOW[parseD(d).getDay()]} ${+d.slice(8)}: ${t.title}`); });
+  [...S.recs.values()].filter(r => r.date >= ws && r.date <= we).forEach(r => {
+    const f = FORMS[r.form]; if (!f) return;
+    if (f.kind === "check") Object.entries((r.data && r.data.items) || {}).forEach(([k, a]) => { if (a.v === "n") issues.push(`${fmtD(r.date)} · ${L(f.title)}: ${L(f.items.find(i => i.id === k) || {}).slice(0, 70)}${a.note ? " (" + a.note + ")" : ""}`); });
+    if (r.form === "stockcheck") { const n = (r.data.items || []).filter(it => { const fin = it.recount !== "" && it.recount != null ? it.recount : it.phy; return num(fin) !== null && num(it.sys) !== null && num(fin) !== num(it.sys); }).length; if (n) issues.push(`${fmtD(r.date)} · ${LANG === "ar" ? "فروقات جرد" : "Stock check differences"}: ${n}`); }
+    if (r.form === "cashhandover" && r.data.remarks) issues.push(`${fmtD(r.date)} · ${LANG === "ar" ? "ملاحظة نقد" : "Cash remark"}: ${r.data.remarks}`);
+    if (r.form === "refund" && r.data.onSystem === "n") issues.push(`${fmtD(r.date)} · ${LANG === "ar" ? "مرتجع غير منفذ على النظام" : "Refund not done on system"}: ${r.data.invoice}`);
+    if (r.form === "incident") issues.push(`${fmtD(r.date)} · ${L(f.title)}`);
+  });
+  return `<div class="sec"><h1>${T("review")}</h1></div><div class="row"><button class="btn sm alt" id="rvPrev">←</button><b class="grow num" style="text-align:center">${fmtD(ws)} → ${fmtD(we)}</b><button class="btn sm alt" id="rvNext" ${addDays(ws, 7) > today() ? "disabled" : ""}>→</button></div>
+    <div class="kpis"><div class="kpi"><b class="num">${total ? Math.round(done / total * 100) : 0}%</b><span>${LANG === "ar" ? "مهام مكتملة" : "tasks completed"}</span></div><div class="kpi"><b class="num" style="color:${gaps.length ? "var(--bad)" : "inherit"}">${gaps.length}</b><span>${LANG === "ar" ? "لم تُنجز" : "not done"}</span></div><div class="kpi"><b class="num" style="color:${issues.length ? "var(--warn)" : "inherit"}">${issues.length}</b><span>${LANG === "ar" ? "نقاط للمتابعة" : "points to follow up"}</span></div></div>
+    <div class="card stack"><h3>${LANG === "ar" ? "لم تُنجز" : "Not done"}</h3>${gaps.map(g => `<div class="small">✕ ${esc(g)}</div>`).join("") || `<div class="small muted">${LANG === "ar" ? "لا شيء. كل المهام منجزة." : "Nothing. Every task was done."}</div>`}</div>
+    <div class="card stack"><h3>${LANG === "ar" ? "نقاط للمتابعة" : "Points to follow up"}</h3>${issues.map(g => `<div class="small">• ${esc(g)}</div>`).join("") || `<div class="small muted">${LANG === "ar" ? "لا توجد نقاط." : "Nothing flagged."}</div>`}</div>
+    ${rv ? `<div class="card row"><span class="chip ok">✓</span><span class="grow">${LANG === "ar" ? "تمت المراجعة بواسطة" : "Reviewed by"} <b>${esc(shortName(rv.by))}</b> · <span class="num">${fmtD(ymd(new Date(rv.at)))}</span>${rv.note ? `<div class="small muted">${esc(rv.note)}</div>` : ""}</span><button class="btn sm alt" id="rvUndo">${LANG === "ar" ? "تراجع" : "Undo"}</button></div>` :
+      `<div class="field"><label for="rvNote">${T("note")} (${T("optional")})</label><textarea class="in" id="rvNote" rows="3"></textarea></div><button class="btn" id="rvOk">${LANG === "ar" ? "أؤكد أنني راجعت هذا الأسبوع" : "I have reviewed this week"}</button>`}`;
+};
+HOOKS.review = app => {
+  const ws = R.ws || weekStart(today());
+  $("#rvPrev", app).onclick = async () => { R.ws = addDays(ws, -7); await loadMonth(ymOf(R.ws)); render(); }; $("#rvNext", app).onclick = () => { R.ws = addDays(ws, 7); render(); };
+  const ok = $("#rvOk", app); if (ok) ok.onclick = () => { Data.saveDoc("review", "w" + ws, { by: ME, at: Date.now(), ws, note: $("#rvNote", app).value.trim() }); toast(T("saved")); };
+  const un = $("#rvUndo", app); if (un) un.onclick = () => Data.delDoc("review", "w" + ws);
+};
+
+/* ---- more ---- */
+VIEWS.more = (me, mgr) => {
+  const link = (v, label, sub) => `<button class="task" data-go="${v}"><span class="grow"><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</span>${ICON.chev}</button>`;
+  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : ""}
+    ${mgr && !REAL ? `<div class="card stack"><b>${T("viewAs")}</b><select class="in" id="mrAs"><option value="">—</option>${staffList().filter(s => s.id !== ME).map(s => `<option value="${esc(s.id)}">${esc(s.short || s.name)} · ${esc(L(ROLES[s.role]))}</option>`).join("")}</select></div>` : ""}
+    <button class="btn alt" id="mrPin">${LANG === "ar" ? "تغيير الرقم السري" : "Change my PIN"}</button><button class="btn alt" id="mrOut">${T("signOut")}</button></div>`;
+};
+HOOKS.more = app => {
+  $("#mrOut", app).onclick = signOut;
+  $("#mrPin", app).onclick = () => { const id = ME; Data.saveCfg({ staff: { [id]: { pin: "" } } }); ME = null; LG = { id, pin: "", first: "", stage: "new" }; render(); };
+  const as = $("#mrAs", app); if (as) as.onchange = () => { if (as.value) { REAL = ME; ME = as.value; go("home"); } };
+};
+
+/* ===================== settings ===================== */
+const FREQS = [["daily", "Every day", "كل يوم"], ["weekly", "Every week", "كل أسبوع"], ["monthly", "Every month", "كل شهر"], ["quarterly", "Every quarter", "كل ربع سنة"], ["event", "Only when it happens", "عند الحدوث فقط"]];
+VIEWS.config = () => {
+  const tab = R.tab || "team", st = S.cfg.store || {}, hd = S.cfg.huddle || {}, ty = S.cfg.tryon || {};
+  const tabs = [["team", LANG === "ar" ? "الفريق" : "Team"], ["sched", LANG === "ar" ? "الجدول" : "Schedule"], ["store", LANG === "ar" ? "المتجر" : "Store"], ["lists", LANG === "ar" ? "القوائم" : "Lists"]];
+  let h = `<h1>${T("config")}</h1><div class="row">${tabs.map(([k, l]) => `<button class="chip ${tab === k ? "acc" : ""}" data-tab="${k}" style="border:0;padding:9px 14px;font-size:.9rem">${l}</button>`).join("")}</div>`;
+  if (tab === "team") h += `<div class="list">${staffList(true).map(s => `<button data-st="${esc(s.id)}" class="row" style="text-align:start;background:none;border-left:0;border-right:0;border-bottom:0;width:100%"><span class="grow"><b>${esc(s.name)}</b><div class="small muted">${esc(L(ROLES[s.role]))} · <span class="num">${esc(s.id)}</span>${s.active === false ? " · " + (LANG === "ar" ? "غير نشط" : "not active") : ""}${s.pin ? "" : " · " + (LANG === "ar" ? "لم يحدد رقماً سرياً بعد" : "no PIN yet")}</div></span>${ICON.chev}</button>`).join("")}</div><button class="btn soft" id="cfAdd">+ ${LANG === "ar" ? "إضافة موظف" : "Add a team member"}</button>`;
+  if (tab === "store") h += `<div class="card stack"><div class="field"><label for="cfName">${LANG === "ar" ? "اسم المتجر (كما يُطبع)" : "Store name (as printed on the forms)"}</label><input class="in" id="cfName" value="${esc(st.name || "")}"></div><div class="field"><label for="cfCode">${LANG === "ar" ? "رمز الموقع" : "Location code"}</label><input class="in" id="cfCode" value="${esc(st.code || "")}"></div><button class="btn" id="cfStore">${T("save")}</button></div>
+    <p class="muted small">${LANG === "ar" ? "متجر آخر؟ اطلب نسخة خاصة به من هذا التطبيق، ثم غيّر الاسم والفريق والجدول هنا." : "Another store needs its own copy of this app. It then sets its own name, team and schedule here."}</p>`;
+  if (tab === "lists") h += `<div class="card stack"><h3>${LANG === "ar" ? "أرقام الاجتماع اليومي الثابتة" : "Daily Huddle: numbers that stay the same"}</h3>${[["monthTarget", "Month target (SAR)"], ["uptGoal", "UPT goal"], ["atvGoal", "ATV goal (SAR)"], ["convGoal", "Conversion goal (%)"]].map(([k, l]) => `<div class="field"><label for="hd_${k}">${l}</label><input class="in num" id="hd_${k}" inputmode="decimal" value="${esc(hd[k] || "")}"></div>`).join("")}<button class="btn" id="cfHud">${T("save")}</button></div>
+    <div class="card stack"><h3>${LANG === "ar" ? "قائمة أحذية التجربة" : "Try ON shoe list"}</h3><p class="small muted">${LANG === "ar" ? "سطر لكل موديل: الفئة، اسم الموديل، كمية النظام." : "One line per model: family, model name, system quantity."}</p>${[["z1", "Zone 1 (up to 6 lines)"], ["z2", "Zone 2 (up to 6 lines)"], ["z3", "Zone 3 (up to 2 lines)"]].map(([z, l]) => `<div class="field"><label for="ty_${z}">${l}</label><textarea class="in" id="ty_${z}" rows="${z === "z3" ? 3 : 6}">${esc((ty[z] || []).map(i => [i.fam, i.item, i.sys].join(", ")).join("\n"))}</textarea></div>`).join("")}<button class="btn" id="cfTry">${T("save")}</button></div>`;
+  if (tab === "sched") h += `<p class="muted">${LANG === "ar" ? "متى يُطلب كل نموذج ومن ينفذه افتراضياً. يمكنك تغيير أي يوم من صفحة الخطة." : "When each form is due and who does it by default. Any single day can be changed on the Plan page."}</p><div class="stack">${FORM_ORDER.map(id => { const c = cfgForm(id), f = FORMS[id]; return `<div class="card stack" data-fc="${id}"><div class="row"><span class="chip acc">${esc(f.letter)}</span><b class="grow">${esc(L(f.title))}</b><label class="row small" style="gap:6px"><input type="checkbox" data-f="on" ${c.on !== false ? "checked" : ""} style="width:20px;height:20px">${LANG === "ar" ? "مفعّل" : "In use"}</label></div>
+      <div class="row"><select class="in grow" data-f="freq" aria-label="How often">${FREQS.map(([v, en, ar]) => `<option value="${v}" ${c.freq === v ? "selected" : ""}>${LANG === "ar" ? ar : en}</option>`).join("")}</select>
+      ${c.freq === "weekly" ? `<select class="in" data-f="dow" style="width:auto" aria-label="Day">${DOW.map((n, i) => `<option value="${i}" ${(c.dow ?? 0) === i ? "selected" : ""}>${(LANG === "ar" ? DOW_AR : DOW)[i]}</option>`).join("")}</select>` : ""}
+      ${c.freq === "monthly" || c.freq === "quarterly" ? `<input class="in num" data-f="dom" type="number" min="1" max="28" value="${c.dom || 1}" style="width:80px" aria-label="Day of month">` : ""}
+      ${c.freq !== "event" ? `<input class="in num" data-f="due" type="time" value="${esc(c.due || "")}" style="width:auto" aria-label="Due by">` : ""}</div>
+      ${c.freq !== "event" ? `<div class="row"><select class="in grow" data-f="who" aria-label="Default person"><option value="">${T("nobody")}</option><optgroup label="${LANG === "ar" ? "حسب الوظيفة" : "By role"}">${Object.entries(ROLES).map(([k, r]) => `<option value="${k}" ${c.who === k ? "selected" : ""}>${esc(L(r))}</option>`).join("")}</optgroup><optgroup label="${LANG === "ar" ? "شخص محدد" : "A named person"}">${staffList().map(s => `<option value="${esc(s.id)}" ${c.who === s.id ? "selected" : ""}>${esc(s.short || s.name)}</option>`).join("")}</optgroup></select>
+      ${f.kind === "check" && !f.weekly ? `<label class="row small" style="gap:6px"><input type="checkbox" data-f="split" ${c.split ? "checked" : ""} style="width:20px;height:20px">${LANG === "ar" ? "تقسيم على الفريق" : "Share between people"}</label>` : ""}</div>` : ""}</div>`; }).join("")}</div>`;
+  return h;
+};
+HOOKS.config = app => {
+  app.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { R.tab = b.dataset.tab; render(); });
+  app.querySelectorAll("[data-st]").forEach(b => b.onclick = () => staffEditor(b.dataset.st));
+  const add = $("#cfAdd", app); if (add) add.onclick = () => staffEditor(null);
+  const sv = $("#cfStore", app); if (sv) sv.onclick = () => { Data.saveCfg({ store: { name: $("#cfName", app).value.trim(), code: $("#cfCode", app).value.trim() } }); toast(T("saved")); };
+  const hu = $("#cfHud", app); if (hu) hu.onclick = () => { const o2 = {}; ["monthTarget", "uptGoal", "atvGoal", "convGoal"].forEach(k => { o2[k] = $("#hd_" + k, app).value.trim(); }); Data.saveCfg({ huddle: o2 }); toast(T("saved")); };
+  const tr = $("#cfTry", app); if (tr) tr.onclick = () => { const o2 = {}; [["z1", 6], ["z2", 6], ["z3", 2]].forEach(([z, n]) => { o2[z] = $("#ty_" + z, app).value.split("\n").map(l => l.trim()).filter(Boolean).slice(0, n).map(l => { const p = l.split(",").map(x => x.trim()); return { fam: p[0] || "", item: p[1] || "", sys: p[2] || "" }; }); }); Data.saveCfg({ tryon: o2 }); toast(T("saved")); };
+  app.querySelectorAll("[data-fc]").forEach(card => card.querySelectorAll("[data-f]").forEach(inp => inp.onchange = () => { const k = inp.dataset.f, v = inp.type === "checkbox" ? inp.checked : (k === "dow" || k === "dom" ? +inp.value : inp.value); Data.saveCfg({ forms: { [card.dataset.fc]: { [k]: v } } }); }));
+};
+function staffEditor(id) {
+  const s = id ? staff(id) : { name: "", short: "", role: "sa", active: true };
+  const m = document.createElement("div"); m.className = "modal";
+  m.innerHTML = `<div class="sheet"><h2>${id ? esc(s.name) : (LANG === "ar" ? "موظف جديد" : "New team member")}</h2>
+    <div class="field"><label for="se_id">${LANG === "ar" ? "الرقم الوظيفي" : "Employee ID"}</label><input class="in num" id="se_id" inputmode="numeric" value="${esc(id || "")}" ${id ? "disabled" : ""}></div>
+    <div class="field"><label for="se_name">${LANG === "ar" ? "الاسم الكامل" : "Full name"}</label><input class="in" id="se_name" value="${esc(s.name)}"></div>
+    <div class="field"><label for="se_short">${LANG === "ar" ? "الاسم المطبوع على النماذج" : "Name as printed on forms"}</label><input class="in" id="se_short" value="${esc(s.short || "")}"></div>
+    <div class="field"><label for="se_role">${LANG === "ar" ? "الوظيفة" : "Role"}</label><select class="in" id="se_role">${Object.entries(ROLES).map(([k, r]) => `<option value="${k}" ${s.role === k ? "selected" : ""}>${esc(L(r))}</option>`).join("")}</select></div>
+    <label class="row"><input type="checkbox" id="se_act" ${s.active !== false ? "checked" : ""} style="width:22px;height:22px"><span>${LANG === "ar" ? "نشط (يظهر في القوائم)" : "Active (shows in lists)"}</span></label>
+    <p class="small" id="se_msg" style="color:var(--bad)"></p>
+    <div class="row">${id && s.pin ? `<button class="btn alt sm" id="se_pin">${LANG === "ar" ? "إعادة تعيين الرقم السري" : "Reset PIN"}</button>` : ""}<button class="btn alt grow" id="se_no">${T("cancel")}</button><button class="btn grow" id="se_ok">${T("save")}</button></div></div>`;
+  document.body.appendChild(m);
+  $("#se_no", m).onclick = () => m.remove();
+  const rp = $("#se_pin", m); if (rp) rp.onclick = () => { Data.saveCfg({ staff: { [id]: { pin: "" } } }); m.remove(); toast(LANG === "ar" ? "عاد الرقم إلى 0000 وسيختار رقماً جديداً عند الدخول" : "PIN is back to 0000. They choose a new one at next sign-in."); };
+  $("#se_ok", m).onclick = () => { const nid = (id || $("#se_id", m).value.trim()).replace(/[^A-Za-z0-9_-]/g, ""), name = $("#se_name", m).value.trim();
+    if (!nid || !name) { $("#se_msg", m).textContent = LANG === "ar" ? "الرقم الوظيفي والاسم مطلوبان." : "Employee ID and name are needed."; return; }
+    if (!id && staff(nid)) { $("#se_msg", m).textContent = LANG === "ar" ? "هذا الرقم مستخدم." : "That ID is already in the team."; return; }
+    const parts = name.split(/\s+/); Data.saveCfg({ staff: { [nid]: { name, short: $("#se_short", m).value.trim() || (parts.length > 1 ? parts[0] + " " + parts[parts.length - 1] : name), role: $("#se_role", m).value, active: $("#se_act", m).checked, ord: s.ord || 50 } } }); m.remove(); toast(T("saved")); };
+}
+
+/* ===================== audit simulator ===================== */
+const AUDIT_SECTIONS = [["Operational Controls", 1, 5], ["Cash, Banking & Sales", 6, 10], ["Inventory Controls", 11, 16], ["Security", 17, 24], ["Health & Safety", 25, 31]];
+const AUDIT_Q = [null,
+  "Is the monthly checklist binder completed; all paperwork filed in the binder? Binders and paperwork are maintained in line with the retail retention policy?",
+  "Lost and Found items are placed in a designated area and transferred to mall management within 24 hours?",
+  "Any visitor, vendor, contractor visit to the boutique recorded on the Log Sheet?",
+  "IT Crisis Management bag is available and sealed? Store has the latest/up to date copy of SOM readily available?",
+  "Terms and conditions, other required official signages, is visible and neatly displayed? No other type of signage (tax-free, mall promotions or discounts…) displayed unless previously approved by the brand?",
+  "Float and petty cash match the imprest assigned to the boutique and expenses are in line with company policy? All monies and paperwork in the tills / safe balance? Ad-hoc counts for petty cash, cash floats, are conducted by BM/AOM and recorded?",
+  "Are daily sales reports completed, signed off and sent to Finance in a timely manner? Cash proceeds from sales is kept and maintained in the designated section of the boutique's safe?",
+  "Sales returns done as per policy? Ad-hoc checks for sales returns are conducted and exceptional cases reported?",
+  "Store team is knowledgeable of the VAT refund guidelines and have access to resources that would enable swift refund transactions to customers?",
+  "Handover of sales cash, petty cash and float cash is done daily? Variances reported to Management (Finance, HR and LP) same day? Discounts issued are in line with company policies.",
+  "Daily random SKUs count is performed, and discrepancies communicated to ROM/AOM and LP same day?",
+  "Monthly counts are performed, and discrepancies communicated to ROM/AOM and LP same day?",
+  "Are there pending LTO / LTI stock transfers? Stock transfers and hand overs conducted in an area visible by CCTV?",
+  "Any loan stocks are approved and are supported with the required authorisations?",
+  "Shoes boxes contain correctly matched pairs (left and right) of the same size and style? Damaged items are identified and stored separately?",
+  "Selling price affixed on items match the price on POS system? Try on shoes are clean?",
+  "Is the store complying with relevant opening/closing policies and procedures? Are boutique doors locked when not open for trading and are contractors and/or cleaners supervised?",
+  "Keys and key movements are controlled? Safe codes are changed every six months? Keys are safeguarded as per LP instructions?",
+  "Are outgoing rubbish bags checked by SIC and security guard if available before disposal? Boxes are flattened and checked before taken out?",
+  "Safe codes are changed every six months? Log maintained? The screen of the cash counting machine is positioned in a clear view of the CCTV, in accordance with the LP guidelines.",
+  "Are memos related to electrical power shut down communicated to retail coordinator/ROM/AOM/LP/FM on the same day of receiving? Any overnight activity notified to LP team?",
+  "Is back-office door closed when staff are inside and locked when no staff are present?",
+  "Is the CCTV control system in a cabinet? Is the system in operational order and is the password protected by BM and DBM? Does the CCTV time match real time and is recording maintained for a minimum 90 days?",
+  "Personal belongings are kept secure in the designated area or in the allocated locker (if available)?",
+  "Emergency exit doors kept closed and emergency exit signage fully visible and unobstructed?",
+  "Is the store first aid kit present and correctly stocked?",
+  "Are all racking and storage safe and undamaged and all walkways clear?",
+  "Are all fire alarm activation points clearly marked and unobstructed? Fire alarm panel free from faults? Fire extinguishers are available, unobstructed, and serviced?",
+  "Are emergency numbers displayed in the back office?",
+  "Store team is knowledgeable of the Health and Safety / Fire Safety guidelines communicated in the training and able to respond to LP questions? Are staff aware of safe route and location of the assembly point?",
+  "Vigilance is applied when using ladders, carrying boxes, and all other similar physical tasks within the store?"];
+function auditEvidence() {
+  const t = today(), from = addDays(t, -29), days = []; for (let d = from; d < t; d = addDays(d, 1)) days.push(d); days.push(t);
+  const firstRec = [...S.recs.values()].reduce((m, r) => (r.date < m ? r.date : m), t), live = (S.cfg && S.cfg.liveFrom) || firstRec, start = live > from ? live : from, win = days.filter(d => d >= start && d < t);
+  const rate = id => { if (cfgForm(id).on === false) return null; const due = win.filter(d => schedDate(id, d) === d); if (!due.length) return null; const dn = due.filter(d => taskDone(id, d, null)).length; return { due: due.length, dn, pct: dn / due.length }; };
+  const itemRate = (id, item) => { const rs = recsOf(id, start, t); if (!rs.length) return null; const y = rs.filter(r => r.data.items && r.data.items[item] && r.data.items[item].v === "y").length; return { n: rs.length, y, pct: y / rs.length }; };
+  const wk = n => { const rs = recsOf("smweekly", addDays(t, -45), t).filter(r => r.data.items && r.data.items["i" + n]).sort((a, b) => b.at - a.at); return rs.length ? rs[0].data.items["i" + n].v : null; };
+  const pc = r => (r ? `${r.dn} of ${r.due} days` : "nothing scheduled yet");
+  const fromRate = (r, hi = 0.95, lo = 0.8) => (!r ? null : r.pct >= hi ? "y" : r.pct < lo ? "n" : null);
+  const wkS = v => (v === "y" ? "y" : v === "n" ? "n" : null), wkT = (n, v) => `Weekly checklist item ${n}: ${v === "y" ? "Yes" : v === "na" ? "N/A" : v === "n" ? "No" : "not answered yet"}.`;
+  const E = {}; const set = (n, s, why) => { E[n] = { s, why }; };
+  // 1 binder
+  { let due = 0, dn = 0; formsOn().forEach(id => { const r = rate(id); if (r) { due += r.due; dn += r.dn; } }); const ym = ymOf(t), filed = Object.keys((S.binder[ym] && S.binder[ym].filed) || {}).length;
+    set(1, due ? (dn / due >= 0.95 ? "y" : dn / due < 0.8 ? "n" : null) : null, `${dn} of ${due} scheduled forms completed since ${fmtD(start)}. Binder check this month: ${filed} of ${BINDER.length} letters marked printed and filed.`); }
+  { const rs = recsOf("lostfound", start, t), held = rs.filter(r => /Kept in store/i.test(r.data.action || "") && r.date < addDays(t, -1)); set(2, !rs.length ? null : held.length ? "n" : "y", rs.length ? `${rs.length} items logged. ${held.length} still marked as kept in store for more than 24 hours.` : "No lost and found items logged in the app."); }
+  { const v = recsOf("visitor", start, t).length, n = recsOf("vendor", start, t).length, noId = recsOf("vendor", start, t).filter(r => !r.data.idno).length, c = rate("cleaner"); set(3, c ? fromRate(c, 0.9, 0.7) : (v + n ? "y" : null), `${v} visitor and ${n} vendor entries. Cleaner log: ${pc(c)}. Vendor entries without an ID number: ${noId}.`); }
+  set(4, null, "Check in the store: bag sealed, SOM copy available."); set(5, null, "Check at the counter: licences, VAT certificate, return policy displayed.");
+  { const r = rate("till"), ex = recsOf("till", start, t).filter(x => num(x.data.excess)); set(6, fromRate(r, 0.99, 0.6), `Weekly till spot check: ${r ? `${r.dn} of ${r.due} weeks` : "none due yet"}. Checks with an excess or shortage: ${ex.length}.`); }
+  { const a = itemRate("closing", "i8"), b = itemRate("closing", "i6"); set(7, a ? (a.pct >= 0.95 ? "y" : a.pct < 0.8 ? "n" : null) : null, a ? `Closing checklist: "sales report sent" ticked on ${a.y} of ${a.n} days; "sales report prepared and cash in safe" on ${b.y} of ${b.n}.` : "No closing checklists yet."); }
+  { const rs = recsOf("refund", start, t), bad = rs.filter(r => !r.data.invoice || r.data.onSystem === "n"); set(8, !rs.length ? null : bad.length ? "n" : "y", rs.length ? `${rs.length} returns logged, all with invoice numbers. Not done on system: ${bad.length}.` : "No returns logged in the app."); }
+  set(9, null, "Ask two team members to explain the VAT refund steps.");
+  { const a = rate("cashhandover"), b = rate("banking"), rem = recsOf("cashhandover", start, t).filter(r => r.data.remarks).length; set(10, fromRate(a), `Cash handover logged on ${pc(a)}. Banking deposit on ${pc(b)}. Handovers with a discrepancy remark: ${rem}.`); }
+  { const a = rate("stockcheck"), short = recsOf("stockcheck", start, t).filter(r => (r.data.items || []).length < 20).length; set(11, a ? (a.pct >= 0.95 && !short ? "y" : a.pct < 0.8 ? "n" : null) : null, `Daily random stock check done on ${pc(a)}. Sheets with fewer than 20 items: ${short}.`); }
+  set(12, null, "Full counts are not tracked in this app. Answer from your count records."); set(13, null, "Check pending LTO / LTI transfers on the system."); set(14, null, "Check loan stock approvals and emails."); set(15, null, "Open a few boxes in the stockroom and check pairs.");
+  { const a = rate("tryon"); set(16, null, `Try ON count done on ${pc(a)}. Check price tags against the POS in the store.`); }
+  { const a = rate("opening"), b = rate("closing"); const both = a && b ? { pct: Math.min(a.pct, b.pct) } : null; set(17, fromRate(both), `Opening checklist completed on ${pc(a)}; closing on ${pc(b)}.`); }
+  const cc = recsOf("codechange", addDays(t, -183), t).length;
+  { const k = recsOf("keys", start, t), out = k.filter(r => !r.data.returned).length, i15 = itemRate("opening", "i15"); set(18, k.length && cc ? "y" : null, `${k.length} key handovers logged (${out} without a return time). Keys in locked cabinet ticked on ${i15 ? `${i15.y} of ${i15.n}` : "0"} days. Vault code changes logged in the last six months: ${cc}.`); }
+  { const a = itemRate("opening", "i16"); set(19, a ? (a.pct >= 0.95 ? "y" : a.pct < 0.8 ? "n" : null) : null, a ? `"Garbage bags checked" ticked on ${a.y} of ${a.n} opening checklists.` : "No opening checklists yet."); }
+  set(20, cc ? null : null, `Vault code changes logged in the last six months: ${cc}. Check the cash counting machine position in the store.`);
+  { const a = itemRate("opening", "i11"); set(21, null, `"Check for memo or HR updates" ticked on ${a ? `${a.y} of ${a.n}` : "0"} opening checklists. Check that memos are filed in the binder.`); }
+  set(22, null, "Check the back-office door in the store.");
+  { const a = itemRate("opening", "i8"), v = wk(1); set(23, null, `"CCTV checked to be working" ticked on ${a ? `${a.y} of ${a.n}` : "0"} opening checklists. ${wkT(1, v)} Check the recording goes back 90 days.`); }
+  { const a = rate("locker"), b = itemRate("closing", "i11"); set(24, fromRate(a, 0.99, 0.6), `Weekly locker check: ${a ? `${a.dn} of ${a.due} weeks` : "none due yet"}. Staff bags checked at exit on ${b ? `${b.y} of ${b.n}` : "0"} closings.`); }
+  { const a = itemRate("opening", "i14"), v = wk(17); set(25, a ? (a.pct >= 0.95 ? "y" : a.pct < 0.8 ? "n" : null) : wkS(v), `"Fire exits clear" ticked on ${a ? `${a.y} of ${a.n}` : "0"} opening checklists. ${wkT(17, v)}`); }
+  set(26, wkS(wk(15)), wkT(15, wk(15))); set(27, wkS(wk(21)), wkT(21, wk(21))); set(28, wkS(wk(13)), wkT(13, wk(13)));
+  set(29, null, "Check the back office wall."); set(30, null, `${wkT(20, wk(20))} Ask two team members for the exit route and assembly point.`); set(31, null, "Watch how the team uses ladders and carries boxes.");
+  return E;
+}
+const auditScore = ans => { let y = 0, n = 0, na = 0; for (let i = 1; i <= 31; i++) { const v = ans[i] && ans[i].v; if (v === "y") y++; else if (v === "n") n++; else if (v === "na") na++; } return { y, n, na, left: 31 - y - n - na, pct: y + n ? Math.round(y / (y + n) * 100) : null }; };
+VIEWS.audit = () => {
+  const E = auditEvidence(), runs = Object.entries(S.audits).map(([id, a]) => ({ id, ...a })).sort((a, b) => b.at - a.at), open = runs.find(r => !r.closed);
+  const auto = {}; for (let i = 1; i <= 31; i++) if (E[i].s) auto[i] = { v: E[i].s }; const as = auditScore(auto);
+  let h = `<h1>${T("audit")}</h1>`;
+  if (!open) {
+    h += `<div class="card stack"><div class="row"><div class="grow"><div class="muted small">${LANG === "ar" ? "ما تثبته سجلات التطبيق الآن" : "What the app's records show right now"}</div><div class="score num">${as.pct === null ? "–" : as.pct + "%"}</div></div><div class="stack" style="gap:4px"><span class="chip ok num">${as.y} ${T("yes")}</span><span class="chip bad num">${as.n} ${T("no")}</span><span class="chip num">${as.left} ${LANG === "ar" ? "تُفحص في المتجر" : "to check in store"}</span></div></div>
+      <p class="small muted">${LANG === "ar" ? "النتيجة = نعم ÷ (نعم + لا). لا ينطبق لا يُحسب. هكذا يحسب المدقق." : "Score = Yes ÷ (Yes + No). N/A is left out. This is how the auditor's report works it out."}</p><button class="btn" id="auStart">${LANG === "ar" ? "ابدأ زيارة تدقيق تجريبية" : "Start a practice audit visit"}</button></div>`;
+    if (runs.length) h += `<div class="sec"><h2>${LANG === "ar" ? "الزيارات السابقة" : "Earlier practice visits"}</h2></div><div class="list">${runs.map(r => { const s = auditScore(r.ans || {}); return `<div class="row"><span class="grow"><b class="num">${fmtD(r.date)}</b><div class="small muted">${esc(shortName(r.by))} · ${s.y} ${T("yes")} · ${s.n} ${T("no")} · ${s.na} ${T("na")}</div></span><span class="chip ${s.pct >= 90 ? "ok" : s.pct >= 75 ? "warn" : "bad"} num" style="font-size:1rem">${s.pct === null ? "–" : s.pct + "%"}</span><button class="btn sm alt" data-aview="${esc(r.id)}">${LANG === "ar" ? "عرض" : "View"}</button></div>`; }).join("")}</div>`;
+    h += `<div class="sec"><h2>${LANG === "ar" ? "أين تقف الآن" : "Where you stand now"}</h2></div><div class="list">${Array.from({ length: 31 }, (_, k) => k + 1).map(i => `<div class="row" style="align-items:flex-start"><span class="chip ${E[i].s === "y" ? "ok" : E[i].s === "n" ? "bad" : ""} num">Q${i}</span><span class="grow small">${esc(E[i].why)}</span></div>`).join("")}</div>`;
+    return h;
+  }
+  const ans = open.ans || {}, sc = auditScore(ans);
+  h += `<div class="card stack" style="position:sticky;top:64px;z-index:3"><div class="row"><div class="score num">${sc.pct === null ? "–" : sc.pct + "%"}</div><div class="grow stack" style="gap:6px"><div class="row" style="gap:6px"><span class="chip ok num">${sc.y} ${T("yes")}</span><span class="chip bad num">${sc.n} ${T("no")}</span><span class="chip num">${sc.na} ${T("na")}</span><span class="chip warn num">${sc.left} ${LANG === "ar" ? "متبقية" : "left"}</span></div><div class="bar"><i style="width:${Math.round((31 - sc.left) / 31 * 100)}%"></i></div></div></div></div>
+    <div class="row"><button class="btn sm soft" id="auFill">${LANG === "ar" ? "استخدم ما يقترحه التطبيق" : "Use what the app suggests"}</button><button class="btn sm alt" id="auDrop">${LANG === "ar" ? "إلغاء هذه الزيارة" : "Discard this visit"}</button></div>`;
+  AUDIT_SECTIONS.forEach(([name, a, b]) => { const part = {}; for (let i = a; i <= b; i++) part[i] = ans[i]; let y = 0, n = 0; for (let i = a; i <= b; i++) { if (ans[i] && ans[i].v === "y") y++; if (ans[i] && ans[i].v === "n") n++; }
+    h += `<div class="sec"><h2>${name}</h2><span class="num">${y + n ? Math.round(y / (y + n) * 100) + "%" : "–"}</span></div><div class="stack">`;
+    for (let i = a; i <= b; i++) { const v = ans[i] && ans[i].v;
+      h += `<div class="card stack" style="border-inline-start:6px solid var(--${v === "y" ? "ok" : v === "n" ? "bad" : "line"})"><div><b>Q${i}</b> <span>${esc(AUDIT_Q[i])}</span></div><div class="small muted">${E[i].s ? `<span class="chip ${E[i].s === "y" ? "ok" : "bad"}">${LANG === "ar" ? "التطبيق يقترح" : "App suggests"} ${E[i].s === "y" ? T("yes") : T("no")}</span> ` : ""}${esc(E[i].why)}</div>
+        <div class="opts" style="grid-template-columns:1fr 1fr 1fr">${[["y", "yes", T("yes")], ["n", "no", T("no")], ["na", "", T("na")]].map(([val, cls, lab]) => `<button class="opt ${cls} ${v === val ? "on" : ""}" data-aq="${i}" data-v="${val}" style="min-height:52px;padding:10px">${lab}</button>`).join("")}</div>
+        <input class="in" data-ac="${i}" placeholder="${LANG === "ar" ? "تعليق (كما يكتب المدقق)" : "Comment (as the auditor would write)"}" value="${esc((ans[i] && ans[i].c) || "")}"></div>`; }
+    h += `</div>`; });
+  h += `<button class="btn" id="auEnd" ${sc.left ? "disabled" : ""}>${LANG === "ar" ? "إنهاء وحفظ النتيجة" : "Finish and save the score"}</button>`;
+  return h;
+};
+HOOKS.audit = app => {
+  const runs = Object.entries(S.audits).map(([id, a]) => ({ id, ...a })).sort((a, b) => b.at - a.at), open = runs.find(r => !r.closed);
+  const st = $("#auStart", app); if (st) st.onclick = () => { Data.saveDoc("audit", "a" + Date.now(), { date: today(), at: Date.now(), by: ME, ans: {}, closed: false }); };
+  app.querySelectorAll("[data-aview]").forEach(b => b.onclick = () => { const r = S.audits[b.dataset.aview]; const m = document.createElement("div"); m.className = "modal"; const s = auditScore(r.ans || {});
+    m.innerHTML = `<div class="sheet"><div class="row"><h2 class="grow num">${fmtD(r.date)} · ${s.pct === null ? "–" : s.pct + "%"}</h2><button class="pill" id="avX">✕</button></div><table class="t">${Array.from({ length: 31 }, (_, k) => k + 1).map(i => { const a = (r.ans || {})[i] || {}; return `<tr><th>Q${i}</th><td>${a.v === "y" ? "✓ Yes" : a.v === "n" ? "✕ No" : a.v === "na" ? "N/A" : "–"}</td><td class="small">${esc(a.c || "")}</td></tr>`; }).join("")}</table><button class="btn bad sm" id="avDel">${T("del")}</button></div>`;
+    document.body.appendChild(m); $("#avX", m).onclick = () => m.remove(); $("#avDel", m).onclick = () => { m.remove(); Data.delDoc("audit", b.dataset.aview); }; });
+  if (!open) return;
+  const save = fn => { const doc = clone(S.audits[open.id]); delete doc.id; doc.ans = doc.ans || {}; fn(doc); Data.saveDoc("audit", open.id, doc); };
+  app.querySelectorAll("[data-aq]").forEach(b => b.onclick = () => save(d => { const i = b.dataset.aq; d.ans[i] = Object.assign({}, d.ans[i], { v: d.ans[i] && d.ans[i].v === b.dataset.v ? "" : b.dataset.v }); }));
+  app.querySelectorAll("[data-ac]").forEach(inp => inp.onchange = () => save(d => { const i = inp.dataset.ac; d.ans[i] = Object.assign({}, d.ans[i], { c: inp.value.trim() }); }));
+  $("#auFill", app).onclick = () => { const E = auditEvidence(); save(d => { for (let i = 1; i <= 31; i++) if (E[i].s && !(d.ans[i] && d.ans[i].v)) d.ans[i] = Object.assign({}, d.ans[i], { v: E[i].s, c: (d.ans[i] && d.ans[i].c) || E[i].why }); }); };
+  $("#auDrop", app).onclick = () => ask(LANG === "ar" ? "إلغاء هذه الزيارة؟" : "Discard this practice visit?", "", T("del"), () => Data.delDoc("audit", open.id), true);
+  $("#auEnd", app).onclick = () => { save(d => { d.closed = true; d.closedAt = Date.now(); }); toast(T("saved")); window.scrollTo(0, 0); };
+};
+
+/* ===================== start ===================== */
+let pendingRender = false;
+const typing = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== "checkbox"; };
+listeners.push(() => { if (W || $(".modal")) { pendingRender = true; return; } if (typing()) { pendingRender = true; return; } render(); });
+document.addEventListener("focusout", () => setTimeout(() => { if (pendingRender && !W && !$(".modal") && !typing()) { pendingRender = false; render(); } }, 150));
+window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (v && VIEWS[v] && v !== R.view && ME && !W) { R = { view: v }; render(); } });
+setInterval(() => { if (pendingRender && !W && !$(".modal") && !typing()) { pendingRender = false; render(); } }, 500);
+setInterval(() => { if (ME && !W && !$(".modal") && !typing() && R.view === "home") render(); }, 60000);   // keeps "late" up to date
+(function boot() {
+  setLang(LANG);
+  try { const saved = localStorage.getItem("sb-me"); if (saved) ME = saved; } catch (e) {}
+  const v = location.hash.slice(1); if (v && VIEWS[v]) R.view = v;
+  render(); dataInit();
+})();
+
+</script>
+</body>
+</html>

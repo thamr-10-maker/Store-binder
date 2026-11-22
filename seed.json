@@ -1,0 +1,86 @@
+{
+ "store": {
+  "name": "",
+  "code": ""
+ },
+ "forms": {},
+ "huddle": {},
+ "tryon": {
+  "z1": [
+   {
+    "fam": "Lifestyle",
+    "item": "Cloud 6",
+    "sys": ""
+   },
+   {
+    "fam": "Lifestyle",
+    "item": "Cloud 6 WP",
+    "sys": ""
+   },
+   {
+    "fam": "Lifestyle",
+    "item": "Cloudtilt",
+    "sys": ""
+   },
+   {
+    "fam": "Lifestyle",
+    "item": "Cloudtilt Remix",
+    "sys": ""
+   },
+   {
+    "fam": "Lifestyle",
+    "item": "THE ROGER Advantage",
+    "sys": ""
+   },
+   {
+    "fam": "Lifestyle",
+    "item": "THE ROGER Clubhouse",
+    "sys": ""
+   }
+  ],
+  "z2": [
+   {
+    "fam": "Run",
+    "item": "CloudMonster 3 Hyper",
+    "sys": ""
+   },
+   {
+    "fam": "Run",
+    "item": "Cloudsurfer Max 1",
+    "sys": ""
+   },
+   {
+    "fam": "Run",
+    "item": "Cloudsurfer 2",
+    "sys": ""
+   },
+   {
+    "fam": "Run",
+    "item": "Cloudrunner 3",
+    "sys": ""
+   },
+   {
+    "fam": "Run",
+    "item": "Cloudswift 4",
+    "sys": ""
+   },
+   {
+    "fam": "Run",
+    "item": "Cloudultra 3",
+    "sys": ""
+   }
+  ],
+  "z3": [
+   {
+    "fam": "Train",
+    "item": "Cloudzone",
+    "sys": ""
+   },
+   {
+    "fam": "Train",
+    "item": "Cloudnova 2",
+    "sys": ""
+   }
+  ]
+ }
+}
