@@ -213,7 +213,7 @@ const ROLES = {
 const isMgrRole = r => r === "sm" || r === "dsm";
 
 /* ===================== state + data layer ===================== */
-const S = { mode: "loading", canWrite: true, cfg: null, recs: new Map(), plans: {}, audits: {}, binder: {}, reviews: {}, months: new Set(), ready: false };
+const S = { mode: "loading", canWrite: true, cfg: null, recs: new Map(), plans: {}, audits: {}, binder: {}, reviews: {}, rotas: {}, months: new Set(), ready: false };
 let DB = null, DOWNLOADS = null;
 const LS_KEY = "sb-local-v1";
 const listeners = [];
@@ -222,7 +222,7 @@ function notify() { listeners.forEach(f => { try { f(); } catch (e) { console.er
 function lsLoad() { try { return JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch (e) { return null; } }
 function lsSave() {
   if (S.mode !== "local") return;
-  try { localStorage.setItem(LS_KEY, JSON.stringify({ cfg: S.cfg, recs: [...S.recs.entries()], plans: S.plans, audits: S.audits, binder: S.binder, reviews: S.reviews })); } catch (e) {}
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ cfg: S.cfg, recs: [...S.recs.entries()], plans: S.plans, audits: S.audits, binder: S.binder, reviews: S.reviews, rotas: S.rotas })); } catch (e) {}
 }
 function writeFail(e) { console.error("write failed", e); if (e && e.code === "invalid_argument") { S.canWrite = false; } toast(LANG === "ar" ? "تعذّر الحفظ. حاول مرة أخرى." : "Could not save. Please try again."); notify(); }
 
@@ -241,7 +241,7 @@ async function dataInit() {
   if (!db) {
     S.mode = "local";
     const d = lsLoad();
-    if (d) { S.cfg = d.cfg; S.recs = new Map(d.recs || []); S.plans = d.plans || {}; S.audits = d.audits || {}; S.binder = d.binder || {}; S.reviews = d.reviews || {}; }
+    if (d) { S.cfg = d.cfg; S.recs = new Map(d.recs || []); S.plans = d.plans || {}; S.audits = d.audits || {}; S.binder = d.binder || {}; S.reviews = d.reviews || {}; S.rotas = d.rotas || {}; }
     S.ready = true; notify(); return;
   }
   DB = db; S.mode = "cloud";
@@ -257,6 +257,7 @@ async function dataInit() {
   db.collection("plan").where("date", ">=", addDays(t, -10)).onSnapshot(q => { q.docs.forEach(d => { S.plans[d.id] = clone(d.data()); }); notify(); }, onErr);
   db.collection("audit").onSnapshot(q => { S.audits = {}; q.docs.forEach(d => { S.audits[d.id] = clone(d.data()); }); notify(); }, onErr);
   db.collection("binder").onSnapshot(q => { S.binder = {}; q.docs.forEach(d => { S.binder[d.id] = clone(d.data()); }); notify(); }, onErr);
+  db.collection("rota").where("ws", ">=", addDays(t, -60)).onSnapshot(q => { q.docs.forEach(d => { S.rotas[d.id] = clone(d.data()); }); notify(); }, onErr);
   db.collection("review").onSnapshot(q => { S.reviews = {}; q.docs.forEach(d => { S.reviews[d.id] = clone(d.data()); }); notify(); }, onErr);
 }
 async function loadMonth(ym) {             // older months, read once when asked for
@@ -267,6 +268,7 @@ async function loadMonth(ym) {             // older months, read once when asked
 const queues = {};                          // one write at a time per document
 function qWrite(path, fn) { const p = (queues[path] || Promise.resolve()).then(fn).catch(writeFail); queues[path] = p; return p; }
 
+const COLKEY = { audit: "audits", review: "reviews", binder: "binder", rota: "rotas" };
 const Data = {
   saveCfg(patch) {                          // merge into settings
     const existed = !!S.cfg; S.cfg = deepMerge(S.cfg || {}, clone(patch)); lsSave(); notify();
@@ -282,8 +284,8 @@ const Data = {
   },
   delRec(id) { S.recs.delete(id); lsSave(); notify(); if (S.mode === "cloud") return qWrite("rec/" + id, () => DB.doc("rec/" + id).delete()); },
   savePlan(date, plan) { plan.date = date; S.plans[date] = clone(plan); lsSave(); notify(); if (S.mode === "cloud") return qWrite("plan/" + date, () => DB.doc("plan/" + date).set(plan)); },
-  saveDoc(col, id, doc) { S[col === "audit" ? "audits" : col === "review" ? "reviews" : "binder"][id] = clone(doc); lsSave(); notify(); if (S.mode === "cloud") return qWrite(col + "/" + id, () => DB.doc(col + "/" + id).set(doc)); },
-  delDoc(col, id) { delete S[col === "audit" ? "audits" : col === "review" ? "reviews" : "binder"][id]; lsSave(); notify(); if (S.mode === "cloud") return qWrite(col + "/" + id, () => DB.doc(col + "/" + id).delete()); },
+  saveDoc(col, id, doc) { S[COLKEY[col]][id] = clone(doc); lsSave(); notify(); if (S.mode === "cloud") return qWrite(col + "/" + id, () => DB.doc(col + "/" + id).set(doc)); },
+  delDoc(col, id) { delete S[COLKEY[col]][id]; lsSave(); notify(); if (S.mode === "cloud") return qWrite(col + "/" + id, () => DB.doc(col + "/" + id).delete()); },
 };
 const recsOf = (form, from, to) => [...S.recs.entries()].filter(([, r]) => r.form === form && (!from || r.date >= from) && (!to || r.date <= to))
   .map(([id, r]) => ({ id, ...r })).sort((a, b) => (a.date + (a.data && a.data.time || "") + a.at).localeCompare(b.date + (b.data && b.data.time || "") + b.at));
@@ -692,8 +694,9 @@ async function renderPage(pg, dpi) {
   const W = pg.land ? 841.89 : 595.28, H = pg.land ? 595.28 : 841.89, k = dpi / 72;
   const cv = document.createElement("canvas"); cv.width = Math.round(W * k); cv.height = Math.round(H * k);
   const c = cv.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, cv.width, cv.height);
-  const im = await loadBg(pg.bg); c.drawImage(im, 0, 0, cv.width, cv.height);
-  c.save(); c.scale(k, k); pg.draw(c); c.restore();
+  if (pg.bg) { const im = await loadBg(pg.bg); c.drawImage(im, 0, 0, cv.width, cv.height); }
+  const extra = {}; for (const n of pg.imgs || []) { try { extra[n] = await loadBg(n); } catch (e) {} }
+  c.save(); c.scale(k, k); pg.draw(c, extra); c.restore();
   return cv;
 }
 async function makePdf(pages, onStep) {
@@ -735,7 +738,8 @@ function runId(id, date) {                  // the record a scheduled form write
   return null;
 }
 const planOf = date => S.plans[date] || {};
-const isOff = (date, sid) => !!(planOf(date).off && planOf(date).off[sid]);
+const shiftOf = (date, sid) => { const r = S.rotas[weekStart(date)]; return (r && r.cells && r.cells[sid] && r.cells[sid][parseD(date).getDay()]) || ""; };
+const isOff = (date, sid) => { const o = planOf(date).off; if (o && sid in o) return !!o[sid]; return shiftOf(date, sid) === "OFF"; };
 const isSplit = (id, date) => { const p = planOf(date); if (p.split && id in p.split) return !!p.split[id]; return !!cfgForm(id).split; };
 function defaultWho(id, date) {
   const w = cfgForm(id).who; if (!w) return "";
@@ -785,7 +789,7 @@ function defVal(f, fd, data) {
   if (fd.cfgDef) return (S.cfg && S.cfg.huddle && S.cfg.huddle[fd.cfgDef]) || "";
   if (fd.remember) { try { return localStorage.getItem(rememberKey(f.id, fd.k)) || ""; } catch (e) { return ""; } }
   if (fd.t === "rows") {
-    if (fd.seed === "duty") return staffList().filter(s => !isOff(W.date, s.id)).slice(0, fd.max).map(s => ({ who: s.id }));
+    if (fd.seed === "duty") return staffList().filter(s => !isOff(W.date, s.id)).slice(0, fd.max).map(s => ({ who: s.id, timing: shiftOf(W.date, s.id) }));
     if (fd.seed === "variance") { const sc = S.recs.get("stockcheck_" + W.date); if (!sc) return [];
       return (sc.data.items || []).map(it => { const fin = it.recount !== "" && it.recount != null ? it.recount : it.phy; return { it, fin }; }).filter(x => num(x.fin) !== null && num(x.it.sys) !== null && num(x.fin) !== num(x.it.sys))
         .map(x => ({ ref: [x.it.style, x.it.desc, x.it.size].filter(Boolean).join(" "), sys: x.it.sys, phy: x.fin, remark: x.it.remark || "" })).slice(0, fd.max); }
@@ -1116,7 +1120,7 @@ HOOKS.plan = app => {
   app.querySelectorAll("[data-day]").forEach(b => b.onclick = () => { R.date = b.dataset.day; render(); });
   $("#plDate", app).onchange = e => { if (e.target.value) { R.date = e.target.value; render(); } };
   $("#plCopy", app).onclick = () => { const prev = planOf(addDays(d, -1)); edit(p => { p.tasks = clone(prev.tasks || {}); p.split = clone(prev.split || {}); p.off = clone(prev.off || {}); }); toast(T("saved")); };
-  app.querySelectorAll("[data-duty]").forEach(b => b.onclick = () => edit(p => { p.off = p.off || {}; if (p.off[b.dataset.duty]) delete p.off[b.dataset.duty]; else p.off[b.dataset.duty] = true; }));
+  app.querySelectorAll("[data-duty]").forEach(b => b.onclick = () => edit(p => { p.off = p.off || {}; p.off[b.dataset.duty] = !isOff(d, b.dataset.duty); }));
   app.querySelectorAll("[data-who]").forEach(s => s.onchange = () => edit(p => { p.tasks = p.tasks || {}; p.tasks[s.dataset.who] = Object.assign({}, p.tasks[s.dataset.who], { who: s.value }); }));
   app.querySelectorAll("[data-due]").forEach(s => s.onchange = () => edit(p => { p.tasks = p.tasks || {}; p.tasks[s.dataset.due] = Object.assign({}, p.tasks[s.dataset.due], { due: s.value }); }));
   app.querySelectorAll("[data-skip]").forEach(b => b.onclick = () => edit(p => { p.skip = p.skip || {}; p.skip[b.dataset.skip] = true; }));
@@ -1225,7 +1229,7 @@ HOOKS.review = app => {
 /* ---- more ---- */
 VIEWS.more = (me, mgr) => {
   const link = (v, label, sub) => `<button class="task" data-go="${v}"><span class="grow"><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</span>${ICON.chev}</button>`;
-  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : ""}
+  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota")}
     ${mgr && !REAL ? `<div class="card stack"><b>${T("viewAs")}</b><select class="in" id="mrAs"><option value="">—</option>${staffList().filter(s => s.id !== ME).map(s => `<option value="${esc(s.id)}">${esc(s.short || s.name)} · ${esc(L(ROLES[s.role]))}</option>`).join("")}</select></div>` : ""}
     <button class="btn alt" id="mrPin">${LANG === "ar" ? "تغيير الرقم السري" : "Change my PIN"}</button><button class="btn alt" id="mrOut">${T("signOut")}</button></div>`;
 };
@@ -1234,6 +1238,82 @@ HOOKS.more = app => {
   $("#mrPin", app).onclick = () => { const id = ME; Data.saveCfg({ staff: { [id]: { pin: "" } } }); ME = null; LG = { id, pin: "", first: "", stage: "new" }; render(); };
   const as = $("#mrAs", app); if (as) as.onchange = () => { if (as.value) { REAL = ME; ME = as.value; go("home"); } };
 };
+
+/* ===================== weekly rota (Sunday to Saturday, AM / PM) ===================== */
+const ROTA_NEXT = { "": "AM", AM: "PM", PM: "OFF", OFF: "" };
+const rotaDoc = ws => S.rotas[ws] || { ws, cells: {} };
+const rotaCell = (doc, sid, i) => (doc.cells && doc.cells[sid] && doc.cells[sid][i]) || "";
+function rotaCounts(doc, people) {
+  const day = Array.from({ length: 7 }, () => ({ AM: 0, PM: 0, OFF: 0 })), per = {};
+  people.forEach(s => { per[s.id] = { AM: 0, PM: 0, OFF: 0 }; for (let i = 0; i < 7; i++) { const v = rotaCell(doc, s.id, i); if (v) { day[i][v]++; per[s.id][v]++; } } });
+  return { day, per };
+}
+VIEWS.rota = (me, mgr) => {
+  const ws = R.ws || weekStart(today()), doc = rotaDoc(ws), people = staffList(), { day, per } = rotaCounts(doc, people), sh = (S.cfg && S.cfg.shifts) || {};
+  const dn = LANG === "ar" ? DOW_AR : DOW, ar = LANG === "ar";
+  const cellStyle = v => v === "AM" ? "background:var(--accent-soft);color:var(--accent)" : v === "PM" ? "background:var(--warn-soft);color:var(--warn)" : v === "OFF" ? "background:var(--surface2);color:var(--muted)" : "background:var(--surface);color:var(--muted)";
+  return `<div class="sec"><h1>${ar ? "جدول الدوام الأسبوعي" : "Weekly rota"}</h1></div>
+    <div class="row"><button class="btn sm alt" id="rtPrev">←</button><b class="grow num" style="text-align:center">${fmtD(ws)} → ${fmtD(addDays(ws, 6))}</b><button class="btn sm alt" id="rtNext">→</button></div>
+    ${mgr ? `<p class="muted small">${ar ? "اضغط الخانة للتبديل: صباحي، مسائي، إجازة، فارغ." : "Tap a box to change it: AM, PM, OFF, empty."}</p>` : ""}
+    <div class="scroll card" style="padding:8px"><table class="t num" style="min-width:640px;font-size:.85rem"><tr><th style="min-width:130px">${ar ? "الموظف" : "Team member"}</th>${Array.from({ length: 7 }, (_, i) => `<th style="text-align:center">${dn[i]}<br><span class="muted">${+addDays(ws, i).slice(8)}</span></th>`).join("")}<th style="text-align:center">AM</th><th style="text-align:center">PM</th></tr>
+      ${people.map(s => `<tr><td><b>${esc(s.short || s.name)}</b><div class="muted small">${esc(s.id)}</div></td>${Array.from({ length: 7 }, (_, i) => { const v = rotaCell(doc, s.id, i); return `<td style="padding:3px"><button ${mgr ? `data-rc="${esc(s.id)}:${i}"` : "disabled"} style="width:100%;min-width:46px;min-height:44px;border:1px solid var(--line);border-radius:8px;font-weight:700;${cellStyle(v)}">${v || "·"}</button></td>`; }).join("")}<td style="text-align:center"><b>${per[s.id].AM}</b></td><td style="text-align:center"><b>${per[s.id].PM}</b></td></tr>`).join("")}
+      <tr><th>${ar ? "عدد الصباحي" : "AM count"}</th>${day.map(d => `<td style="text-align:center"><b>${d.AM}</b></td>`).join("")}<td style="text-align:center"><b>${day.reduce((a, d) => a + d.AM, 0)}</b></td><td></td></tr>
+      <tr><th>${ar ? "عدد المسائي" : "PM count"}</th>${day.map(d => `<td style="text-align:center"><b>${d.PM}</b></td>`).join("")}<td></td><td style="text-align:center"><b>${day.reduce((a, d) => a + d.PM, 0)}</b></td></tr>
+      <tr><th>${ar ? "إجازة" : "Off"}</th>${day.map(d => `<td style="text-align:center">${d.OFF}</td>`).join("")}<td></td><td></td></tr></table></div>
+    ${mgr ? `<div class="card stack"><h3>${ar ? "أوقات الدوام (تُطبع على الجدول)" : "Shift times (printed on the rota)"}</h3><div class="row"><div class="field grow"><label for="rtAm">AM</label><input class="in" id="rtAm" placeholder="10:00 - 19:00" value="${esc(sh.am || "")}"></div><div class="field grow"><label for="rtPm">PM</label><input class="in" id="rtPm" placeholder="14:00 - 23:00" value="${esc(sh.pm || "")}"></div></div></div>
+    <div class="row"><button class="btn alt grow" id="rtCopy">${ar ? "نسخ الأسبوع السابق" : "Copy last week"}</button><button class="btn alt" id="rtClear">${ar ? "مسح" : "Clear"}</button></div>` : ""}
+    <button class="btn" id="rtPdf">${ar ? "عرض وحفظ PDF" : "View and save as PDF"}</button>`;
+};
+HOOKS.rota = app => {
+  const ws = R.ws || weekStart(today());
+  const save = fn => { const d = clone(rotaDoc(ws)); d.ws = ws; d.cells = d.cells || {}; fn(d); d.by = ME; d.at = Date.now(); Data.saveDoc("rota", ws, d); };
+  $("#rtPrev", app).onclick = () => { R.ws = addDays(ws, -7); render(); }; $("#rtNext", app).onclick = () => { R.ws = addDays(ws, 7); render(); };
+  app.querySelectorAll("[data-rc]").forEach(b => b.onclick = () => { const [sid, i] = b.dataset.rc.split(":"); save(d => { d.cells[sid] = Object.assign({}, d.cells[sid]); d.cells[sid][i] = ROTA_NEXT[rotaCell(d, sid, i)]; }); });
+  const cp = $("#rtCopy", app); if (cp) cp.onclick = () => { const prev = S.rotas[addDays(ws, -7)]; if (!prev) return toast(LANG === "ar" ? "لا يوجد جدول للأسبوع السابق" : "There is no rota for last week"); save(d => { d.cells = clone(prev.cells || {}); }); toast(T("saved")); };
+  const cl = $("#rtClear", app); if (cl) cl.onclick = () => ask(LANG === "ar" ? "مسح هذا الأسبوع؟" : "Clear this week?", "", LANG === "ar" ? "مسح" : "Clear", () => save(d => { d.cells = {}; }), true);
+  ["Am", "Pm"].forEach(k => { const e = $("#rt" + k, app); if (e) e.onchange = () => Data.saveCfg({ shifts: { [k.toLowerCase()]: e.value.trim() } }); });
+  $("#rtPdf", app).onclick = () => showPages(rotaPages(ws), "rota_" + ws);
+};
+function rotaPages(ws) {
+  const doc = rotaDoc(ws), people = staffList(), { day, per } = rotaCounts(doc, people), sh = (S.cfg && S.cfg.shifts) || {}, per1 = 18, pages = [];
+  for (let p = 0; p < Math.max(1, Math.ceil(people.length / per1)); p++) {
+    const chunk = people.slice(p * per1, (p + 1) * per1), last = (p + 1) * per1 >= people.length;
+    pages.push({ bg: null, land: true, imgs: ["logo"], draw(c, im) {
+      const X = [28, 58, 118, 262, 356], dw = 50, tx0 = 356 + 7 * dw, tw = 33, right = tx0 + 3 * tw, rh = 21, top = 112, hh = 32;
+      const line = (x0, y0, x1, y1, w) => { c.strokeStyle = "#111"; c.lineWidth = w || 0.6; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); };
+      const fill = (x0, y0, x1, y1, col) => { c.fillStyle = col; c.fillRect(x0, y0, x1 - x0, y1 - y0); };
+      const wt = (s, x0, y0, x1, y1, o) => { c.save(); tx(c, s, x0, y0, x1, y1, o); c.restore(); };
+      tx(c, "WEEKLY ROTA", 28, 30, 420, 58, { align: "l", max: 20, bold: 1 });
+      if (im.logo) c.drawImage(im.logo, right - 34, 26, 34, 34);
+      tx(c, "Store name and location code:  " + storeLine(), 28, 66, 470, 82, { align: "l", max: 9.5 }); tx(c, `Week:  Sunday ${fmtD(ws)}  to  Saturday ${fmtD(addDays(ws, 6))}`, 470, 66, right, 82, { align: "r", max: 9.5 });
+      tx(c, `AM${sh.am ? " = " + sh.am : ""}   |   PM${sh.pm ? " = " + sh.pm : ""}   |   OFF = day off`, 28, 86, right, 100, { align: "l", max: 8.5 });
+      fill(28, top, right, top + hh, "#6e6e6e");
+      const head = (s, x0, x1) => { c.save(); tx(c, s, x0, top, x1, top + hh, { max: 8.5, bold: 1, wrap: 1 }); c.restore(); };
+      const white = fn => { const o = c.fillStyle; fn(); };
+      // header text in white: draw with a temporary override of the ink colour
+      const hx = [["No.", X[0], X[1]], ["Employee No.", X[1], X[2]], ["Name", X[2], X[3]], ["Position", X[3], X[4]]];
+      for (let i = 0; i < 7; i++) hx.push([`${DOW[i]} ${fmtD(addDays(ws, i)).slice(0, 5)}`, 356 + i * dw, 356 + (i + 1) * dw]);
+      hx.push(["AM", tx0, tx0 + tw], ["PM", tx0 + tw, tx0 + 2 * tw], ["OFF", tx0 + 2 * tw, right]);
+      hx.forEach(([s, a, b]) => { c.font = `bold 8.5px ${PFONT}`; c.fillStyle = "#fff"; c.textAlign = "center"; c.textBaseline = "middle"; const parts = s.split(" "); if (parts.length === 2 && /\d/.test(parts[1])) { c.fillText(parts[0], (a + b) / 2, top + 11); c.font = `7.5px ${PFONT}`; c.fillText(parts[1], (a + b) / 2, top + 22); } else c.fillText(s, (a + b) / 2, top + hh / 2, b - a - 4); });
+      let y = top + hh;
+      chunk.forEach((s, k) => { const y1 = y + rh;
+        tx(c, p * per1 + k + 1, X[0], y, X[1], y1, { max: 8.5 }); tx(c, s.id, X[1], y, X[2], y1, { max: 8.5 }); tx(c, s.short || s.name, X[2], y, X[3], y1, { align: "l", max: 8.5, bold: 1 }); tx(c, ROLES[s.role] ? ROLES[s.role].en : "", X[3], y, X[4], y1, { align: "l", max: 7.5 });
+        for (let i = 0; i < 7; i++) { const v = rotaCell(doc, s.id, i), a = 356 + i * dw; if (v === "OFF") fill(a, y, a + dw, y1, "#e4e4e4"); tx(c, v, a, y, a + dw, y1, { max: 9, bold: v !== "OFF" }); }
+        tx(c, per[s.id].AM, tx0, y, tx0 + tw, y1, { max: 8.5 }); tx(c, per[s.id].PM, tx0 + tw, y, tx0 + 2 * tw, y1, { max: 8.5 }); tx(c, per[s.id].OFF, tx0 + 2 * tw, y, right, y1, { max: 8.5 });
+        y = y1; });
+      const bodyEnd = y; let rowsY = [top, top + hh]; for (let k = 1; k <= chunk.length; k++) rowsY.push(top + hh + k * rh);
+      if (last) { [["AM count", "AM"], ["PM count", "PM"], ["Off", "OFF"]].forEach(([lab, key]) => { const y1 = y + rh; fill(28, y, right, y1, "#f0f0f0"); tx(c, lab, X[2], y, X[4], y1, { align: "l", max: 8.5, bold: 1 });
+          for (let i = 0; i < 7; i++) tx(c, day[i][key], 356 + i * dw, y, 356 + (i + 1) * dw, y1, { max: 9, bold: 1 });
+          const tot = day.reduce((a, d) => a + d[key], 0), col = key === "AM" ? 0 : key === "PM" ? 1 : 2; tx(c, tot, tx0 + col * tw, y, tx0 + (col + 1) * tw, y1, { max: 9, bold: 1 }); y = y1; rowsY.push(y); }); }
+      rowsY.forEach(yy => line(28, yy, right, yy)); line(28, bodyEnd, right, bodyEnd, 1.2);
+      const xs = [...X]; for (let i = 1; i <= 7; i++) xs.push(356 + i * dw); xs.push(tx0 + tw, tx0 + 2 * tw, right);
+      xs.forEach(x => { const skip = last && x > X[0] && x < X[4] && x !== X[2]; line(x, top, x, skip ? bodyEnd : y); });
+      c.strokeStyle = "#111"; c.lineWidth = 1.2; c.strokeRect(28, top, right - 28, y - top);
+      if (last) { const fy = Math.min(y + 34, 560); tx(c, "Prepared by (name and signature):", 28, fy, 190, fy + 14, { align: "l", max: 8.5 }); line(190, fy + 13, 420, fy + 13); tx(c, "Date:", 450, fy, 480, fy + 14, { align: "l", max: 8.5 }); line(480, fy + 13, 600, fy + 13); }
+    } });
+  }
+  return pages;
+}
 
 /* ===================== settings ===================== */
 const FREQS = [["daily", "Every day", "كل يوم"], ["weekly", "Every week", "كل أسبوع"], ["monthly", "Every month", "كل شهر"], ["quarterly", "Every quarter", "كل ربع سنة"], ["event", "Only when it happens", "عند الحدوث فقط"]];
