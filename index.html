@@ -1577,6 +1577,7 @@ VIEWS.dsr = () => {
   return `<div class="sec"><h1>${ar ? "تقرير المبيعات اليومي" : "Daily Sales Report"}</h1></div>
     <div class="row"><button class="btn sm alt" id="dsPrev">←</button><input class="in grow num" type="date" id="dsDate" value="${d}" style="text-align:center"><button class="btn sm alt" id="dsNext" ${d >= today() ? "disabled" : ""}>→</button></div>
     ${r ? `<div class="row"><span class="chip ok">✓ ${ar ? "تم الإدخال" : "Filled in"}</span><span class="grow small muted">${esc(shortName(r.by))}</span><button class="btn sm alt" data-form="dsr" data-date="${d}">${T("edit")}</button></div>` : `<button class="btn" data-form="dsr" data-date="${d}">${ar ? "إدخال أرقام هذا اليوم" : "Enter this day's figures"}</button>`}
+    <button class="btn alt" id="dsScan">${ar ? "قراءة تقرير Z بالكاميرا" : "Scan the Z report with the camera"}</button>
     ${targetAED(d) === null ? `<div class="banner">${ar ? "لا يوجد هدف لهذا اليوم. أضفه من صفحة الأهداف." : "There is no budget for this day yet. Add it on the Budget page."}</div>` : ""}
     <p class="muted small">${ar ? "تاريخ التقرير" : "Report date"}: <b>${longDate(d)}</b></p>
     ${tbl("DAILY PERFORMANCE", k.day)}${tbl("MONTH TO DATE", k.mtd)}
@@ -1594,6 +1595,7 @@ HOOKS.dsr = app => {
   $("#dsPrev", app).onclick = async () => { R.date = addDays(d, -1); await loadMonth(ymOf(R.date)); render(); }; $("#dsNext", app).onclick = () => { R.date = addDays(d, 1); render(); };
   $("#dsDate", app).onchange = async e => { if (e.target.value) { R.date = e.target.value; await loadMonth(ymOf(R.date)); render(); } };
   const copy = async t => { try { await navigator.clipboard.writeText(t); toast(LANG === "ar" ? "تم النسخ" : "Copied"); } catch (e) { toast(LANG === "ar" ? "تعذّر النسخ" : "Could not copy"); } };
+  const sc = $("#dsScan", app); if (sc) sc.onclick = () => zScanSheet(d);
   $("#dsCopy", app).onclick = () => copy(dsrText(k));
   $("#dsPic", app).onclick = async () => { const b = await dsrImage(k); if (await saveBlob(b, `DSR_${d}.png`)) toast(T("saved")); };
   app.querySelectorAll("[data-cp]").forEach(b => b.onclick = () => copy(b.dataset.cp));
@@ -1607,6 +1609,93 @@ function huddleFromDsr(key, date) {
   if (key === "uptY") return iv && un !== null ? (un / iv).toFixed(2) : null; if (key === "atvY") return iv && s !== null ? String(Math.round(s / iv)) : null; if (key === "convY") return ft && iv !== null ? (iv / ft * 100).toFixed(1) + "%" : null;
   if (key === "mtdSales" || key === "mtdAch") { let tot = 0, tg = 0; for (let x = y.slice(0, 8) + "01"; x <= y; x = addDays(x, 1)) { const rr = dsrRec(x); if (rr) tot += num(rr.data.sales) || 0; const t = targetSAR(x); if (t !== null) tg += t; } return key === "mtdSales" ? String(Math.round(tot)) : (tg ? Math.round(tot / tg * 100) + "%" : null); }
   return null;
+}
+
+/* ===================== scan a Z report photo into the Daily Sales Report ===================== */
+let ocrLoading = null;
+function loadOcr() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (!ocrLoading) ocrLoading = new Promise((res, rej) => { const s = document.createElement("script"); s.src = "ocr/tesseract.min.js"; s.onload = () => res(window.Tesseract); s.onerror = () => { ocrLoading = null; rej(new Error("Could not load the photo reader. Check the internet connection.")); }; document.head.appendChild(s); });
+  return ocrLoading;
+}
+function zCanvas(im, box, outW) {
+  const [x, y, w, h] = box, k = outW / w, c = document.createElement("canvas"); c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const g = c.getContext("2d"); g.filter = "grayscale(1) contrast(1.6)"; g.imageSmoothingQuality = "high"; g.drawImage(im, x, y, w, h, 0, 0, c.width, c.height); return c;
+}
+/* two looks: first find where the print is on the photo, then read only that part, enlarged */
+async function zRead(file, onStep) {
+  const T2 = await loadOcr(), url = URL.createObjectURL(file), im = new Image(); im.src = url; await im.decode();
+  const w = await T2.createWorker("eng", 1, { workerPath: "ocr/worker.min.js", corePath: "ocr/", langPath: "ocr/" });
+  try {
+    await w.setParameters({ tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" });
+    onStep && onStep(1); const sw = Math.min(im.width, 1500), k = sw / im.width;
+    const first = await w.recognize(zCanvas(im, [0, 0, im.width, im.height], sw), {}, { blocks: true });
+    const words = []; (first.data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p => (p.lines || []).forEach(l => (l.words || []).forEach(o => { if (o.confidence > 75 && /[A-Za-z0-9]{3,}/.test(o.text)) words.push(o.bbox); }))));
+    let box = [0, 0, im.width, im.height];
+    if (words.length > 25) { const xs0 = words.map(b => b.x0).sort((a, b) => a - b), xs1 = words.map(b => b.x1).sort((a, b) => a - b), q = (a, f) => a[Math.min(a.length - 1, Math.floor(a.length * f))];
+      const x0 = q(xs0, 0.03) / k, x1 = q(xs1, 0.97) / k, pad = (x1 - x0) * 0.08; box = [Math.max(0, x0 - pad), 0, Math.min(im.width, x1 + pad) - Math.max(0, x0 - pad), im.height]; }
+    onStep && onStep(2); const outW = Math.max(900, Math.min(1500, box[2] * 2));
+    const second = await w.recognize(zCanvas(im, box, outW));
+    return second.data.text + "\n" + first.data.text;
+  } finally { URL.revokeObjectURL(url); try { await w.terminate(); } catch (e) {} }
+}
+/* pull the numbers out of the text; every number is looked for in more than one place on the receipt */
+function zParse(text) {
+  const amt = s => { const m = String(s).replace(/[Oo]/g, "0").match(/-?\d{1,3}(?:,\d{3})*\.\d{2}|-?\d+\.\d{2}/g); return m ? m.map(x => parseFloat(x.replace(/,/g, ""))) : []; };
+  const ints = s => (String(s).match(/-?\d+/g) || []).map(Number), lines = text.split("\n").map(l => l.trim()).filter(Boolean), find = re => lines.filter(l => re.test(l));
+  const out = { sales: null, gross: null, returns: null, inv: null, units: null, date: null, reg: null, pay: null, notes: [] };
+  /* money: "On invento 10,250.00 -925.00 9,325.00" or the Total line; needs sold + returned = total */
+  const tri = []; lines.forEach(l => { if (/invento|^total\b/i.test(l)) { const a = amt(l); if (a.length === 3 && Math.abs(a[0] + a[1] - a[2]) < 0.01) tri.push([/invento/i.test(l), a]); } });
+  const inv3 = tri.find(t => t[0]); if (inv3) { out.gross = inv3[1][0]; out.returns = -inv3[1][1]; out.sales = inv3[1][2]; }
+  const fig = find(/sales\s*fig\b|TOTAL\s*CAISSE|Sales\s*receipts/i).map(l => amt(l).pop()).filter(v => v !== undefined), count = {}; fig.forEach(v => { count[v] = (count[v] || 0) + 1; });
+  const best = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
+  if (out.sales === null && best !== undefined && count[best] >= 2) { out.sales = +best; out.notes.push("The sold and returned amounts could not be read, only the total."); }
+  else if (out.sales !== null && best !== undefined && count[best] >= 2 && Math.abs(+best - out.sales) > 0.01) out.notes.push(`Two different totals were read: ${out.sales} and ${best}.`);
+  /* payments must add up to the total */
+  const pay = {}; [["mada", /^[MH]ADA\b/i], ["mc", /^Master/i], ["visa", /^Visa\b/i], ["amex", /^Am(ex|erican)/i]].forEach(([k2, re]) => { const l = find(re)[0]; if (l) { const a = amt(l).pop(); if (a !== undefined) pay[k2] = a; } });
+  const sub = find(/subtotal/i)[0]; if (sub) { const a = amt(sub).pop(); if (a !== undefined) pay.cash = a; }
+  const paySum = Object.values(pay).reduce((a, b) => a + b, 0); out.pay = pay;
+  out.payOk = out.sales !== null && Object.keys(pay).length > 0 && Math.abs(paySum - out.sales) < 0.01;
+  /* units: the quantities line (sold, returned, net) or "Number of items" or total ÷ sales per item */
+  const cand = (arr) => { const c2 = {}; arr.filter(v => v !== null && v !== undefined && isFinite(v) && v >= 0).forEach(v => { c2[v] = (c2[v] || 0) + 1; }); const ks = Object.keys(c2).sort((a, b) => c2[b] - c2[a]); return ks.length ? [+ks[0], c2[ks[0]], ks.length] : [null, 0, 0]; };
+  const qty = lines.filter(l => /invento/i.test(l) && !amt(l).length).map(ints).filter(a => a.length === 3 && a[0] + a[1] === a[2]).map(a => a[2]);
+  const per = re => { const l = find(re)[0], a = l ? amt(l).pop() : undefined; return a && out.sales !== null && Math.abs(out.sales / a - Math.round(out.sales / a)) < 0.02 ? Math.round(out.sales / a) : null; };
+  const nItems = find(/Number\s*of\s*items\s*(?!\/)/i).filter(l => !/\/\s*re/i.test(l)).map(l => ints(l.replace(/.*items/i, "")).pop());
+  const u = cand([...qty, ...nItems, per(/figures\s*\/\s*Item/i)]); out.units = u[0]; if (u[2] > 1) out.notes.push("The number of units was read differently in two places. Please check it.");
+  const nRec = find(/Number\s*of\s*receipts/i).map(l => ints(l.replace(/.*receipts/i, "")).pop()).filter(v => v !== undefined);
+  const perRec = per(/figures\s*\/\s*Rece/i), ratioL = find(/items\s*\/\s*re/i)[0], ratio = ratioL ? amt(ratioL).pop() : undefined, byRatio = ratio && out.units !== null ? Math.round(out.units / ratio) : null;
+  const r2 = cand([perRec, cand(nRec)[0], byRatio]); out.inv = r2[1] >= 2 ? r2[0] : perRec !== null ? perRec : byRatio !== null ? byRatio : r2[0];
+  if (out.inv === null) out.notes.push("The number of receipts could not be read. Please type it.");
+  if (out.inv !== null && r2[1] < 2) out.notes.push("The number of receipts was hard to read. Please check it against the paper.");
+  const dm = text.match(/from\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/i); if (dm) out.date = `${dm[3]}-${pad2(+dm[1])}-${pad2(+dm[2])}`;
+  const rg = text.match(/\b(\d{4}\s?[Pp]\s?\d)\b/); if (rg) out.reg = rg[1].replace(/\s/g, "").toUpperCase();
+  out.ok = out.sales !== null && inv3 !== undefined && out.payOk && out.inv !== null && out.units !== null && !out.notes.length;
+  return out;
+}
+function zScanSheet(date) {
+  const ar = LANG === "ar", m = document.createElement("div"); m.className = "modal"; const Z = [null, null];
+  const fld = (i, k, lab) => `<div class="field grow" style="min-width:120px"><label for="z${i}${k}">${lab}</label><input class="in num" id="z${i}${k}" inputmode="decimal" data-z="${i}:${k}" value="${esc(Z[i][k] ?? "")}"></div>`;
+  const draw = () => {
+    const tot = k => Z.reduce((a, z) => a + (z && !z.busy && !z.err ? num(z[k]) || 0 : 0), 0), got = Z.filter(z => z && !z.busy && !z.err);
+    m.innerHTML = `<div class="sheet" style="max-height:96%"><div class="row"><h2 class="grow">${ar ? "قراءة تقرير Z" : "Scan the Z report"}</h2><button class="pill" id="zX">✕</button></div>
+      <p class="small muted">${ar ? "صوّر تقرير كل كاشير. ضع الورقة مستقيمة وفي إضاءة جيدة. راجع الأرقام قبل الحفظ." : "Take a photo of each register's Z report. Keep the paper flat and straight, in good light. Check the numbers before you save."} <b>${longDate(date)}</b></p>
+      ${[0, 1].map(i => { const z = Z[i]; return `<div class="card stack"><div class="row"><b class="grow">${ar ? "الكاشير" : "Register"} ${i + 1}${z && z.reg ? " · " + esc(z.reg) : ""}</b>${z && !z.busy && !z.err ? `<span class="chip ${z.ok ? "ok" : "warn"}">${z.ok ? (ar ? "✓ الأرقام متطابقة" : "✓ numbers add up") : (ar ? "راجع الأرقام" : "check the numbers")}</span>` : ""}</div>
+        ${!z ? "" : z.busy ? `<p class="muted">${ar ? "جارٍ القراءة…" : "Reading the photo…"} ${z.step || 1}/2</p>` : z.err ? `<div class="banner">${esc(z.err)}</div>` : `<div class="row">${fld(i, "sales", ar ? "المبيعات الصافية (ريال)" : "Sales, after returns (SAR)")}${fld(i, "returns", ar ? "المرتجعات (ريال)" : "Returns (SAR)")}</div><div class="row">${fld(i, "inv", ar ? "عدد الفواتير" : "Receipts")}${fld(i, "units", ar ? "القطع" : "Units")}</div>
+          ${z.date && z.date !== date ? `<div class="banner">${ar ? "تاريخ هذا التقرير" : "This Z report is dated"} ${longDate(z.date)}, ${ar ? "وليس" : "not"} ${longDate(date)}.</div>` : ""}${z.payOk === false ? `<div class="banner">${ar ? "مجموع طرق الدفع لا يساوي إجمالي المبيعات المقروء." : "The payment lines that were read do not add up to the sales total."}</div>` : ""}${(z.notes || []).map(n => `<div class="banner">${esc(n)}</div>`).join("")}`}
+        ${z && z.busy ? "" : `<label class="btn ${z ? "alt" : ""}" style="display:flex;align-items:center;justify-content:center;cursor:pointer">${z ? (ar ? "صورة أخرى" : "Take the photo again") : (ar ? "التقط صورة" : "Take a photo")}<input type="file" accept="image/*" data-zf="${i}" style="position:absolute;width:1px;height:1px;opacity:0"></label>${z ? `<button class="btn sm alt" data-zc="${i}">${ar ? "إزالة" : "Remove"}</button>` : ""}`}</div>`; }).join("")}
+      ${got.length === 2 && got[0].sales !== null && got[0].sales === got[1].sales && got[0].units === got[1].units ? `<div class="banner">${ar ? "التقريران متطابقان. تأكد أنك لم تصوّر نفس الورقة مرتين." : "Both registers show the same numbers. Make sure the same paper was not scanned twice."}</div>` : ""}
+      ${got.length ? `<div class="card stack"><b>${ar ? "المجموع لليوم" : "Total for the day"}</b><div class="kpis"><div class="kpi"><b class="num">${money(tot("sales"))}</b><span>${ar ? "المبيعات" : "Sales SAR"}</span></div><div class="kpi"><b class="num">${tot("inv")}</b><span>${ar ? "الفواتير" : "Receipts"}</span></div><div class="kpi"><b class="num">${tot("units")}</b><span>${ar ? "القطع" : "Units"}</span></div></div>
+        <button class="btn" id="zUse">${ar ? "استخدم هذه الأرقام" : "Use these numbers"}</button><p class="small muted">${ar ? "تُحفظ المبيعات والفواتير والقطع والمرتجعات فقط. باقي الخانات لا تتغير." : "Only sales, receipts, units and refunds are filled. The other boxes stay as they are."}</p></div>` : ""}</div>`;
+    $("#zX", m).onclick = () => m.remove();
+    m.querySelectorAll("[data-zf]").forEach(inp => inp.onchange = async e => { const f = e.target.files[0], i = +inp.dataset.zf; if (!f) return; Z[i] = { busy: 1, step: 1 }; draw();
+      try { const p = zParse(await zRead(f, s => { if (Z[i] && Z[i].busy) { Z[i].step = s; draw(); } })); Z[i] = p.sales === null && p.inv === null && p.units === null ? { err: ar ? "تعذّرت قراءة الصورة. حاول مرة أخرى بصورة أقرب وأوضح، أو أدخل الأرقام يدوياً." : "The photo could not be read. Try again closer and sharper, or type the numbers by hand." } : p; }
+      catch (er) { console.error(er); Z[i] = { err: er.message || String(er) }; } draw(); });
+    m.querySelectorAll("[data-zc]").forEach(b => b.onclick = () => { Z[+b.dataset.zc] = null; draw(); });
+    m.querySelectorAll("[data-z]").forEach(inp => inp.onchange = () => { const [i, k] = inp.dataset.z.split(":"); Z[+i][k] = num(inp.value); draw(); });
+    const use = $("#zUse", m); if (use) use.onclick = () => { const data = { sales: String(+tot("sales").toFixed(2)), inv: String(tot("inv")), units: String(tot("units")), refunds: tot("returns") ? String(+tot("returns").toFixed(2)) : "" };
+      Data.patchRec("dsr_" + date, { form: "dsr", date, at: Date.now(), by: ME, data: { sales: "", inv: "", units: "", foot: "", crm: "", exch: "", refunds: "", salesLY: "", footLY: "", comments: "" } }, { data, editedBy: ME, editedAt: Date.now() }); m.remove(); toast(T("saved")); render(); };
+  };
+  document.body.appendChild(m); draw();
 }
 
 /* ===================== settings ===================== */
