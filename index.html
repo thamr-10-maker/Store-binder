@@ -493,9 +493,14 @@ const BINDER = [["A", "Opening and Closing Checklist", ["opening", "closing"]], 
   ["O", "Daily Random Stock Check", ["stockcheck"]], ["Q", "Stock Discrepancy Summary", ["discrepancy"]], ["R", "Daily Cash Handover", ["cashhandover"]], ["S", "Banking Deposit Log", ["banking"]],
   ["T", "Permit Copies", []], ["XYZ", "Return / Refund Log, Product of the Week sheet and others", ["refund", "potw"]]];
 
+/* Try ON models on the shop floor: two walls. Settings can replace this list. */
+const TRY_CAP = { z1: 8, z2: 10 };
+const TRYON_DEF = { z1: ["Cloudboom Max", "Cloudmonster 3", "Cloudsurfer Max", "Cloudsurfer 2", "Cloudrunner 3", "Cloudpulse 2", "Cloud X Tempo Pro", "Cloud X 5"].map(item => ({ fam: "Wall 1", item, sys: "" })),
+  z2: ["Cloud 6", "Cloud 6 Coast", "Cloud 6 Versa", "Cloudtilt", "Cloudswift 4", "Cloudnova 2", "Cloudzone 99", "Cloud Muse", "THE ROGER Advantage", "THE ROGER Pro 3"].map(item => ({ fam: "Wall 2", item, sys: "" })) };
+const tryonCfg = () => { const c = S.cfg || {}, t = c.tryonV === 2 && c.tryon ? c.tryon : TRYON_DEF; return { z1: (t.z1 || []).slice(0, TRY_CAP.z1), z2: (t.z2 || []).slice(0, TRY_CAP.z2) }; };
 function tryonFields() {                     // one question per try-on model
-  const t = (S.cfg && S.cfg.tryon) || {}; const out = [];
-  ["z1", "z2", "z3"].forEach(z => (t[z] || []).forEach((it, i) => { if (it && it.item) out.push({ k: `${z}_${i}`, g: z, t: "num", q: q(`${it.item}: how many pairs are on the floor?`, `${it.item}: كم زوجاً موجود في الصالة؟`), hint: it.sys !== "" && it.sys != null ? q(`System quantity: ${it.sys}`, `كمية النظام: ${it.sys}`) : null }); }));
+  const t = tryonCfg(); const out = [];
+  ["z1", "z2"].forEach(z => (t[z] || []).forEach((it, i) => { if (it && it.item) out.push({ k: `${z}_${i}`, g: z, t: "num", q: q(`${it.item}: how many pairs are on the floor?`, `${it.item}: كم زوجاً موجود في الصالة؟`), hint: it.sys !== "" && it.sys != null ? q(`System quantity: ${it.sys}`, `كمية النظام: ${it.sys}`) : null }); }));
   out.push({ k: "checkedBy", t: "staff", q: q("Closing checked by", "تم الفحص عند الإغلاق بواسطة"), def: "me" });
   return out;
 }
@@ -629,15 +634,15 @@ const SHEETS = {
     const ty = lin(506, 626, 8), xs = [18, 100, 161, 221, 349, 444];
     (d.team || []).slice(0, 8).forEach((m, i) => [shortName(m.who), m.timing, m.ysale && money(m.ysale), m.ttarget && money(m.ttarget), m.mtd].forEach((v, ci) => tx(c, v, xs[ci], ty[i], xs[ci + 1], ty[i + 1], { max: 7, bold: ci === 0 })));
   } }]; },
-  tryon(r) { const d = r.data, t = (S.cfg && S.cfg.tryon) || {}; return [{ bg: "tryon", draw(c) {
+  tryon(r) { const d = r.data, t = tryonCfg(); return [{ bg: "tryon", draw(c) {
     tx(c, fmtD(r.date), 366, 88, 508, 105, { align: "l", max: 9 }); tx(c, nameId(d.checkedBy), 336, 122, 508, 139, { max: 8 });
-    const zones = [["z1", 173, 274, 6, 274], ["z2", 308, 409, 6, 409], ["z3", 443, 476.5, 2, 476.5]]; let gs = 0, gp = 0, anyS = false, anyP = false;
+    const zones = [["z1", 173, 307.6, 8, 307.6], ["z2", 341.3, 509.6, 10, 509.6]]; let gs = 0, gp = 0, anyS = false, anyP = false;
     zones.forEach(([z, a, b, n, ty]) => { const ys = lin(a, b, n); let ss = 0, sp = 0, hs = false, hp = false;
       (t[z] || []).slice(0, n).forEach((it, i) => { if (!it || !it.item) return; const p = d[`${z}_${i}`];
         tx(c, it.fam, 49, ys[i], 123, ys[i + 1], { align: "l", max: 9 }); tx(c, it.item, 123, ys[i], 334, ys[i + 1], { align: "l", max: 9 }); tx(c, it.sys, 334, ys[i], 454, ys[i + 1], { max: 9 }); tx(c, p, 454, ys[i], 509, ys[i + 1], { max: 9 });
         if (num(it.sys) !== null) { ss += num(it.sys); hs = true; } if (num(p) !== null) { sp += num(p); hp = true; } });
       if (hs) { tx(c, ss, 334, ty, 454, ty + 16.8, { max: 9, bold: 1 }); gs += ss; anyS = true; } if (hp) { tx(c, sp, 454, ty, 509, ty + 16.8, { max: 9, bold: 1 }); gp += sp; anyP = true; } });
-    if (anyS) tx(c, gs, 334, 493.3, 454, 510, { max: 9, bold: 1 }); if (anyP) tx(c, gp, 454, 493.3, 509, 510, { max: 9, bold: 1 });
+    if (anyS) tx(c, gs, 334, 526.6, 454, 543.4, { max: 9, bold: 1 }); if (anyP) tx(c, gp, 454, 526.6, 509, 543.4, { max: 9, bold: 1 });
   } }]; },
   feedback(r) { const d = r.data; return [{ bg: "feedback", draw(c) {
     tx(c, storeLine(), 47, 115, 279, 125, { align: "l", max: 7 }); tx(c, fmtD(r.date), 320, 115, 558, 125, { align: "l", max: 7 });
@@ -750,9 +755,9 @@ function defaultWho(id, date) {
 const GROUP_ROLE = { floor: "ss", cash: "dsm", stock: "sc", admin: "dsm", exit: "dsm" };
 const roleWho = (role, date) => { const c = staffList().filter(s => s.role === role && !isOff(date, s.id)); return c.length ? c[0].id : ""; };
 const splitable = f => (f.kind === "check" && !f.weekly) || !!f.zones;
-const groupLabel = (id, g) => { if (!FORMS[id].zones) return L(GROUPS[g]); const z = ((S.cfg && S.cfg.tryon) || {})[g] || [], n = z.filter(i => i && i.item).length, fam = (z.find(i => i && i.fam) || {}).fam; return `${fam || "Part " + g.slice(1)} (${n})`; };
-function groupWho(id, g, date) { if (!FORMS[id].zones) return roleWho(GROUP_ROLE[g], date); const l = staffList().filter(s => (s.role === "ss" || s.role === "sa") && !isOff(date, s.id)); return l.length ? l[["z1", "z2", "z3"].indexOf(g) % l.length].id : ""; }
-function groupsOf(id) { if (FORMS[id].zones) return ["z1", "z2", "z3"].filter(z => (((S.cfg && S.cfg.tryon) || {})[z] || []).some(i => i && i.item)); const seen = []; FORMS[id].items.forEach(it => { if (!seen.includes(it.g)) seen.push(it.g); }); return seen; }
+const groupLabel = (id, g) => { if (!FORMS[id].zones) return L(GROUPS[g]); const z = tryonCfg()[g] || [], n = z.filter(i => i && i.item).length, fam = (z.find(i => i && i.fam) || {}).fam; return `${fam || "Part " + g.slice(1)} (${n})`; };
+function groupWho(id, g, date) { if (!FORMS[id].zones) return roleWho(GROUP_ROLE[g], date); const l = staffList().filter(s => (s.role === "ss" || s.role === "sa") && !isOff(date, s.id)); return l.length ? l[["z1", "z2"].indexOf(g) % l.length].id : ""; }
+function groupsOf(id) { if (FORMS[id].zones) return ["z1", "z2"].filter(z => (tryonCfg()[z] || []).some(i => i && i.item)); const seen = []; FORMS[id].items.forEach(it => { if (!seen.includes(it.g)) seen.push(it.g); }); return seen; }
 function taskDone(id, date, group) {
   const f = FORMS[id], rid2 = runId(id, date), [a, b] = periodOf(id, date);
   if (f.kind === "check") { const r = S.recs.get(rid2); if (!r) return false; if (!group) return !!r.done; return f.items.filter(it => it.g === group).every(it => r.data.items && r.data.items[it.id]); }
@@ -1514,14 +1519,14 @@ function myDayCard(me) {
 /* ===================== settings ===================== */
 const FREQS = [["daily", "Every day", "كل يوم"], ["weekly", "Every week", "كل أسبوع"], ["monthly", "Every month", "كل شهر"], ["quarterly", "Every quarter", "كل ربع سنة"], ["event", "Only when it happens", "عند الحدوث فقط"]];
 VIEWS.config = () => {
-  const tab = R.tab || "team", st = S.cfg.store || {}, hd = S.cfg.huddle || {}, ty = S.cfg.tryon || {};
+  const tab = R.tab || "team", st = S.cfg.store || {}, hd = S.cfg.huddle || {}, ty = tryonCfg();
   const tabs = [["team", LANG === "ar" ? "الفريق" : "Team"], ["sched", LANG === "ar" ? "الجدول" : "Schedule"], ["store", LANG === "ar" ? "المتجر" : "Store"], ["lists", LANG === "ar" ? "القوائم" : "Lists"]];
   let h = `<h1>${T("config")}</h1><div class="row">${tabs.map(([k, l]) => `<button class="chip ${tab === k ? "acc" : ""}" data-tab="${k}" style="border:0;padding:9px 14px;font-size:.9rem">${l}</button>`).join("")}</div>`;
   if (tab === "team") h += `<div class="list">${staffList(true).map(s => `<button data-st="${esc(s.id)}" class="row" style="text-align:start;background:none;border-left:0;border-right:0;border-bottom:0;width:100%"><span class="grow"><b>${esc(s.name)}</b><div class="small muted">${esc(L(ROLES[s.role]))} · <span class="num">${esc(s.id)}</span>${s.active === false ? " · " + (LANG === "ar" ? "غير نشط" : "not active") : ""}${s.pin ? "" : " · " + (LANG === "ar" ? "لم يحدد رقماً سرياً بعد" : "no PIN yet")}</div></span>${ICON.chev}</button>`).join("")}</div><button class="btn soft" id="cfAdd">+ ${LANG === "ar" ? "إضافة موظف" : "Add a team member"}</button>`;
   if (tab === "store") h += `<div class="card stack"><div class="field"><label for="cfName">${LANG === "ar" ? "اسم المتجر (كما يُطبع)" : "Store name (as printed on the forms)"}</label><input class="in" id="cfName" value="${esc(st.name || "")}"></div><div class="field"><label for="cfCode">${LANG === "ar" ? "رمز الموقع" : "Location code"}</label><input class="in" id="cfCode" value="${esc(st.code || "")}"></div><button class="btn" id="cfStore">${T("save")}</button></div>
     <p class="muted small">${LANG === "ar" ? "متجر آخر؟ اطلب نسخة خاصة به من هذا التطبيق، ثم غيّر الاسم والفريق والجدول هنا." : "Another store needs its own copy of this app. It then sets its own name, team and schedule here."}</p>`;
   if (tab === "lists") h += `<div class="card stack"><h3>${LANG === "ar" ? "أرقام الاجتماع اليومي الثابتة" : "Daily Huddle: numbers that stay the same"}</h3>${[["monthTarget", "Month target (SAR)"], ["uptGoal", "UPT goal"], ["atvGoal", "ATV goal (SAR)"], ["convGoal", "Conversion goal (%)"]].map(([k, l]) => `<div class="field"><label for="hd_${k}">${l}</label><input class="in num" id="hd_${k}" inputmode="decimal" value="${esc(hd[k] || "")}"></div>`).join("")}<button class="btn" id="cfHud">${T("save")}</button></div>
-    <div class="card stack"><h3>${LANG === "ar" ? "قائمة أحذية التجربة" : "Try ON shoe list"}</h3><p class="small muted">${LANG === "ar" ? "سطر لكل موديل: الفئة، اسم الموديل، كمية النظام." : "One line per model: family, model name, system quantity."}</p>${[["z1", "Zone 1 (up to 6 lines)"], ["z2", "Zone 2 (up to 6 lines)"], ["z3", "Zone 3 (up to 2 lines)"]].map(([z, l]) => `<div class="field"><label for="ty_${z}">${l}</label><textarea class="in" id="ty_${z}" rows="${z === "z3" ? 3 : 6}">${esc((ty[z] || []).map(i => [i.fam, i.item, i.sys].join(", ")).join("\n"))}</textarea></div>`).join("")}<button class="btn" id="cfTry">${T("save")}</button></div>`;
+    <div class="card stack"><h3>${LANG === "ar" ? "قائمة أحذية التجربة" : "Try ON shoe list"}</h3><p class="small muted">${LANG === "ar" ? "سطر لكل موديل: الفئة، اسم الموديل، كمية النظام." : "One line per model: family, model name, system quantity."}</p>${[["z1", "Wall 1 (up to 8 lines)"], ["z2", "Wall 2 (up to 10 lines)"]].map(([z, l]) => `<div class="field"><label for="ty_${z}">${l}</label><textarea class="in" id="ty_${z}" rows="${z === "z1" ? 8 : 10}">${esc((ty[z] || []).map(i => [i.fam, i.item, i.sys].join(", ")).join("\n"))}</textarea></div>`).join("")}<button class="btn" id="cfTry">${T("save")}</button></div>`;
   if (tab === "sched") h += `<p class="muted">${LANG === "ar" ? "متى يُطلب كل نموذج ومن ينفذه افتراضياً. يمكنك تغيير أي يوم من صفحة الخطة." : "When each form is due and who does it by default. Any single day can be changed on the Plan page."}</p><div class="stack">${FORM_ORDER.map(id => { const c = cfgForm(id), f = FORMS[id]; return `<div class="card stack" data-fc="${id}"><div class="row"><span class="chip acc">${esc(f.letter)}</span><b class="grow">${esc(L(f.title))}</b><label class="row small" style="gap:6px"><input type="checkbox" data-f="on" ${c.on !== false ? "checked" : ""} style="width:20px;height:20px">${LANG === "ar" ? "مفعّل" : "In use"}</label></div>
       <div class="row"><select class="in grow" data-f="freq" aria-label="How often">${FREQS.map(([v, en, ar]) => `<option value="${v}" ${c.freq === v ? "selected" : ""}>${LANG === "ar" ? ar : en}</option>`).join("")}</select>
       ${c.freq === "weekly" ? `<select class="in" data-f="dow" style="width:auto" aria-label="Day">${DOW.map((n, i) => `<option value="${i}" ${(c.dow ?? 0) === i ? "selected" : ""}>${(LANG === "ar" ? DOW_AR : DOW)[i]}</option>`).join("")}</select>` : ""}
@@ -1537,7 +1542,7 @@ HOOKS.config = app => {
   const add = $("#cfAdd", app); if (add) add.onclick = () => staffEditor(null);
   const sv = $("#cfStore", app); if (sv) sv.onclick = () => { Data.saveCfg({ store: { name: $("#cfName", app).value.trim(), code: $("#cfCode", app).value.trim() } }); toast(T("saved")); };
   const hu = $("#cfHud", app); if (hu) hu.onclick = () => { const o2 = {}; ["monthTarget", "uptGoal", "atvGoal", "convGoal"].forEach(k => { o2[k] = $("#hd_" + k, app).value.trim(); }); Data.saveCfg({ huddle: o2 }); toast(T("saved")); };
-  const tr = $("#cfTry", app); if (tr) tr.onclick = () => { const o2 = {}; [["z1", 6], ["z2", 6], ["z3", 2]].forEach(([z, n]) => { o2[z] = $("#ty_" + z, app).value.split("\n").map(l => l.trim()).filter(Boolean).slice(0, n).map(l => { const p = l.split(",").map(x => x.trim()); return { fam: p[0] || "", item: p[1] || "", sys: p[2] || "" }; }); }); Data.saveCfg({ tryon: o2 }); toast(T("saved")); };
+  const tr = $("#cfTry", app); if (tr) tr.onclick = () => { const o2 = {}; [["z1", 8], ["z2", 10]].forEach(([z, n]) => { o2[z] = $("#ty_" + z, app).value.split("\n").map(l => l.trim()).filter(Boolean).slice(0, n).map(l => { const p = l.split(",").map(x => x.trim()); return { fam: p[0] || "", item: p[1] || "", sys: p[2] || "" }; }); }); Data.saveCfg({ tryonV: 2, tryon: o2 }); toast(T("saved")); };
   app.querySelectorAll("[data-fc]").forEach(card => card.querySelectorAll("[data-f]").forEach(inp => inp.onchange = () => { const k = inp.dataset.f, v = inp.type === "checkbox" ? inp.checked : (k === "dow" || k === "dom" ? +inp.value : inp.value); Data.saveCfg({ forms: { [card.dataset.fc]: { [k]: v } } }); }));
 };
 function staffEditor(id) {
