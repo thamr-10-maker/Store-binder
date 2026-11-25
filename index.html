@@ -1103,34 +1103,51 @@ function recDetail(id) {
 }
 
 /* ---- plan: who does what, on any day ---- */
-VIEWS.plan = () => {
-  const d = R.date || today(), p = planOf(d), tasks = tasksFor(d), days = Array.from({ length: 15 }, (_, i) => addDays(today(), i - 1));
-  const people = staffList(), on = people.filter(s => !isOff(d, s.id));
+VIEWS.plan = (me, mgr) => {
+  const d = R.date || today(), p = planOf(d), tasks = tasksFor(d), days = Array.from({ length: 15 }, (_, i) => addDays(today(), i - 1)), ar = LANG === "ar";
+  const people = staffList(), on = people.filter(s => !isOff(d, s.id)), canT = mgr || p.taskBy === ME, canZ = mgr || p.zoneBy === ME, zl = zoneList();
   const sel = t => `<select class="in" data-who="${esc(t.key)}" aria-label="${T("assignTo")}"><option value="">${T("nobody")}</option>${on.map(s => `<option value="${esc(s.id)}" ${t.who === s.id ? "selected" : ""}>${esc(s.short || s.name)}</option>`).join("")}</select>`;
   const checks = formsOn().filter(id => splitable(FORMS[id]) && cfgForm(id).freq !== "event");
   const skipped = formsOn().filter(id => p.skip && p.skip[id]);
-  return `<div class="sec"><h1>${T("plan")}</h1><span>${(LANG === "ar" ? DOW_AR : DOW)[parseD(d).getDay()]} ${fmtD(d)}</span></div>
-    <div class="days">${days.map(x => `<button data-day="${x}" class="${x === d ? "on" : ""}"><span>${x === today() ? T("today") : (LANG === "ar" ? DOW_AR : DOW)[parseD(x).getDay()]}</span><b class="num">${+x.slice(8)}</b><span>${MON[+x.slice(5, 7) - 1].slice(0, 3)}</span></button>`).join("")}</div>
-    <div class="row"><input class="in" type="date" id="plDate" value="${d}" style="width:auto" aria-label="${T("date")}"><button class="btn sm alt" id="plCopy">${LANG === "ar" ? "نسخ من اليوم السابق" : "Copy the day before"}</button></div>
-    <div class="sec"><h2>${T("onDuty")}</h2><span class="num">${on.length}/${people.length}</span></div>
+  const dele = (id, cur) => `<select class="in" id="${id}"><option value="">${ar ? "المديرون فقط" : "Managers only"}</option>${on.filter(x => !isMgrRole(x.role)).map(x => `<option value="${esc(x.id)}" ${cur === x.id ? "selected" : ""}>${esc(x.short || x.name)}</option>`).join("")}</select>`;
+  let h = `<div class="sec"><h1>${T("plan")}</h1><span>${(ar ? DOW_AR : DOW)[parseD(d).getDay()]} ${fmtD(d)}</span></div>
+    <div class="days">${days.map(x => `<button data-day="${x}" class="${x === d ? "on" : ""}"><span>${x === today() ? T("today") : (ar ? DOW_AR : DOW)[parseD(x).getDay()]}</span><b class="num">${+x.slice(8)}</b><span>${MON[+x.slice(5, 7) - 1].slice(0, 3)}</span></button>`).join("")}</div>
+    <div class="row"><input class="in" type="date" id="plDate" value="${d}" style="width:auto" aria-label="${T("date")}">${canT ? `<button class="btn sm alt" id="plCopy">${ar ? "نسخ مهام اليوم السابق" : "Copy tasks from the day before"}</button>` : ""}</div>`;
+  if (mgr) h += `<div class="card stack"><h3>${ar ? "من يوزّع هذا اليوم؟" : "Who does the assigning on this day?"}</h3><div class="row"><div class="field grow"><label for="plTaskBy">${ar ? "المهام (كل شيء عدا المناطق)" : "Tasks (everything except zones)"}</label>${dele("plTaskBy", p.taskBy)}</div><div class="field grow"><label for="plZoneBy">${ar ? "المناطق" : "Zones"}</label>${dele("plZoneBy", p.zoneBy)}</div></div></div>`;
+  else if (!canT && !canZ) h += `<div class="card muted">${ar ? "لست مكلفاً بالتوزيع في هذا اليوم." : "You are not assigning anything on this day."}</div>`;
+  else h += `<div class="banner" style="background:var(--accent-soft);color:var(--accent);border-color:var(--accent)">${ar ? "كلّفك المدير بتوزيع: " : "The manager asked you to assign: "}<b>${[canT ? (ar ? "المهام" : "tasks") : "", canZ ? (ar ? "المناطق" : "zones") : ""].filter(Boolean).join(ar ? " و" : " and ")}</b></div>`;
+  if (canT) h += `<div class="sec"><h2>${T("onDuty")}</h2><span class="num">${on.length}/${people.length}</span></div>
     <div class="row">${people.map(s => `<button class="chip ${isOff(d, s.id) ? "" : "acc"}" data-duty="${esc(s.id)}" style="border:0;padding:8px 12px;font-size:.88rem">${isOff(d, s.id) ? "○" : "●"} ${esc(s.short || s.name)}</button>`).join("")}</div>
-    <div class="sec"><h2>${LANG === "ar" ? "المهام" : "Tasks"}</h2><span class="num">${tasks.length}</span></div>
+    <div class="sec"><h2>${ar ? "المهام" : "Tasks"}</h2><span class="num">${tasks.length}</span></div>
     <div class="stack">${tasks.map(t => `<div class="card stack" style="border-inline-start:6px solid var(--${t.done ? "ok" : t.late ? "bad" : "line"})"><div class="row"><b class="grow">${esc(t.title)}</b>${t.done ? `<span class="chip ok">✓</span>` : ""}</div>
-      <div class="row"><div class="grow" style="min-width:150px">${sel(t)}</div><input class="in num" type="time" data-due="${esc(t.key)}" value="${esc(t.due)}" style="width:auto" aria-label="${T("dueBy")}">${t.group ? "" : `<button class="btn sm alt" data-skip="${t.id}" title="Skip this day">${LANG === "ar" ? "تخطي" : "Skip"}</button>`}</div></div>`).join("") || `<div class="card muted">${T("nothingYet")}</div>`}</div>
-    ${checks.length ? `<div class="sec"><h2>${LANG === "ar" ? "تقسيم المهمة على الفريق" : "Share a task between people"}</h2></div><div class="list">${checks.map(id => `<label class="row"><input type="checkbox" data-split="${id}" ${isSplit(id, d) ? "checked" : ""} style="width:22px;height:22px"><span class="grow">${esc(L(FORMS[id].title))}<div class="small muted">${groupsOf(id).map(g => esc(groupLabel(id, g))).join(" · ")}</div></span></label>`).join("")}</div>` : ""}
-    ${skipped.length ? `<div class="sec"><h2>${LANG === "ar" ? "تم تخطيها هذا اليوم" : "Skipped on this day"}</h2></div><div class="row">${skipped.map(id => `<button class="chip" data-unskip="${id}" style="border:0;padding:8px 12px">↩ ${esc(L(FORMS[id].title))}</button>`).join("")}</div>` : ""}`;
+      <div class="row"><div class="grow" style="min-width:150px">${sel(t)}</div><input class="in num" type="time" data-due="${esc(t.key)}" value="${esc(t.due)}" style="width:auto" aria-label="${T("dueBy")}">${t.group ? "" : `<button class="btn sm alt" data-skip="${t.id}" title="Skip this day">${ar ? "تخطي" : "Skip"}</button>`}</div></div>`).join("") || `<div class="card muted">${T("nothingYet")}</div>`}</div>`;
+  if (canZ) h += `<div class="sec"><h2>${ar ? "المناطق" : "Zones"}</h2><button class="btn sm alt" id="plZCopy">${ar ? "نسخ مناطق اليوم السابق" : "Copy zones from the day before"}</button></div>
+    <div class="stack">${zl.map(z => { const asg = zoneAsg(d, z.id); return `<div class="card stack" style="border-inline-start:6px solid var(--${asg.length ? "ok" : "line"})"><b>${esc(z.name)}</b>
+      ${asg.length ? `<div class="row">${asg.map((a, k) => `<span class="chip acc" style="padding:4px 4px 4px 12px;font-size:.92rem;gap:8px">${esc(shortName(a.who))}<button data-zt="${esc(z.id)}:${k}" class="btn sm" style="min-height:34px;padding:4px 12px" aria-label="Change shift">${a.s}</button><button data-zx="${esc(z.id)}:${k}" class="btn sm alt" style="min-height:34px;padding:4px 10px" aria-label="Remove">✕</button></span>`).join("")}</div>` : ""}
+      <select class="in" data-zadd="${esc(z.id)}" aria-label="${T("assignTo")}"><option value="">+ ${ar ? "إضافة شخص" : "Add a person"}</option>${on.map(s => `<option value="${esc(s.id)}">${esc(s.short || s.name)}${shiftOf(d, s.id) ? " · " + shiftOf(d, s.id) : ""}</option>`).join("")}</select></div>`; }).join("")}</div>
+    <p class="small muted">${ar ? "اضغط AM أو PM بجانب الاسم لتغيير الوردية." : "Tap AM or PM next to a name to change the shift."}</p>`;
+  if (canT) h += `${checks.length ? `<div class="sec"><h2>${ar ? "تقسيم المهمة على الفريق" : "Share a task between people"}</h2></div><div class="list">${checks.map(id => `<label class="row"><input type="checkbox" data-split="${id}" ${isSplit(id, d) ? "checked" : ""} style="width:22px;height:22px"><span class="grow">${esc(L(FORMS[id].title))}<div class="small muted">${groupsOf(id).map(g => esc(groupLabel(id, g))).join(" · ")}</div></span></label>`).join("")}</div>` : ""}
+    ${skipped.length ? `<div class="sec"><h2>${ar ? "تم تخطيها هذا اليوم" : "Skipped on this day"}</h2></div><div class="row">${skipped.map(id => `<button class="chip" data-unskip="${id}" style="border:0;padding:8px 12px">↩ ${esc(L(FORMS[id].title))}</button>`).join("")}</div>` : ""}`;
+  return h;
 };
 HOOKS.plan = app => {
   const d = R.date || today(), edit = fn => { const p = clone(planOf(d)); fn(p); Data.savePlan(d, p); };
+  const zedit = (zid, fn) => edit(p => { const list = clone(zoneAsg(d, zid)); fn(list); p.zones = p.zones || {}; p.zones[zid] = { list }; });
   app.querySelectorAll("[data-day]").forEach(b => b.onclick = () => { R.date = b.dataset.day; render(); });
   $("#plDate", app).onchange = e => { if (e.target.value) { R.date = e.target.value; render(); } };
-  $("#plCopy", app).onclick = () => { const prev = planOf(addDays(d, -1)); edit(p => { p.tasks = clone(prev.tasks || {}); p.split = clone(prev.split || {}); p.off = clone(prev.off || {}); }); toast(T("saved")); };
+  const cp = $("#plCopy", app); if (cp) cp.onclick = () => { const prev = planOf(addDays(d, -1)); edit(p => { p.tasks = clone(prev.tasks || {}); p.split = clone(prev.split || {}); p.off = clone(prev.off || {}); }); toast(T("saved")); };
+  const tb = $("#plTaskBy", app); if (tb) tb.onchange = () => edit(p => { p.taskBy = tb.value; });
+  const zb = $("#plZoneBy", app); if (zb) zb.onchange = () => edit(p => { p.zoneBy = zb.value; });
   app.querySelectorAll("[data-duty]").forEach(b => b.onclick = () => edit(p => { p.off = p.off || {}; p.off[b.dataset.duty] = !isOff(d, b.dataset.duty); }));
   app.querySelectorAll("[data-who]").forEach(s => s.onchange = () => edit(p => { p.tasks = p.tasks || {}; p.tasks[s.dataset.who] = Object.assign({}, p.tasks[s.dataset.who], { who: s.value }); }));
   app.querySelectorAll("[data-due]").forEach(s => s.onchange = () => edit(p => { p.tasks = p.tasks || {}; p.tasks[s.dataset.due] = Object.assign({}, p.tasks[s.dataset.due], { due: s.value }); }));
   app.querySelectorAll("[data-skip]").forEach(b => b.onclick = () => edit(p => { p.skip = p.skip || {}; p.skip[b.dataset.skip] = true; }));
   app.querySelectorAll("[data-unskip]").forEach(b => b.onclick = () => edit(p => { delete p.skip[b.dataset.unskip]; }));
   app.querySelectorAll("[data-split]").forEach(c => c.onchange = () => edit(p => { p.split = p.split || {}; p.split[c.dataset.split] = c.checked; }));
+  app.querySelectorAll("[data-zadd]").forEach(s => s.onchange = () => { if (s.value) zedit(s.dataset.zadd, l => l.push({ who: s.value, s: shiftOf(d, s.value) === "PM" ? "PM" : "AM" })); });
+  app.querySelectorAll("[data-zt]").forEach(b => b.onclick = () => { const [z, k] = b.dataset.zt.split(":"); zedit(z, l => { l[+k].s = l[+k].s === "AM" ? "PM" : "AM"; }); });
+  app.querySelectorAll("[data-zx]").forEach(b => b.onclick = () => { const [z, k] = b.dataset.zx.split(":"); zedit(z, l => l.splice(+k, 1)); });
+  const zc = $("#plZCopy", app); if (zc) zc.onclick = () => { const pd = addDays(d, -1); edit(p => { p.zones = {}; zoneList().forEach(z => { const l = zoneAsg(pd, z.id); if (l.length) p.zones[z.id] = { list: clone(l) }; }); }); toast(T("saved")); };
 };
 
 /* ---- print centre ---- */
@@ -1234,7 +1251,7 @@ HOOKS.review = app => {
 /* ---- more ---- */
 VIEWS.more = (me, mgr) => {
   const link = (v, label, sub) => `<button class="task" data-go="${v}"><span class="grow"><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</span>${ICON.chev}</button>`;
-  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("budget", LANG === "ar" ? "الأهداف اليومية" : "Budget", LANG === "ar" ? "ارفع أهداف الشهر مسبقاً" : "Load the month's daily budget in advance") + link("requests", LANG === "ar" ? "طلب التزويد" : "Replenishment request", LANG === "ar" ? "ما طلبه العملاء ولم يتوفر" : "What customers asked for and we did not have") + link("zones", LANG === "ar" ? "مناطق الصالة" : "Floor zones", LANG === "ar" ? "توزيع الفريق يومياً" : "Who covers which zone, day by day") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota") + link("zones", LANG === "ar" ? "مناطق الصالة" : "Floor zones")}
+  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("budget", LANG === "ar" ? "الأهداف اليومية" : "Budget", LANG === "ar" ? "ارفع أهداف الشهر مسبقاً" : "Load the month's daily budget in advance") + link("requests", LANG === "ar" ? "طلب التزويد" : "Replenishment request", LANG === "ar" ? "ما طلبه العملاء ولم يتوفر" : "What customers asked for and we did not have") + link("zones", LANG === "ar" ? "إعداد المناطق" : "Zone set-up", LANG === "ar" ? "عدد المناطق وأسماؤها" : "How many zones the store has, and their names") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota")}
     ${mgr && !REAL ? `<div class="card stack"><b>${T("viewAs")}</b><select class="in" id="mrAs"><option value="">—</option>${staffList().filter(s => s.id !== ME).map(s => `<option value="${esc(s.id)}">${esc(s.short || s.name)} · ${esc(L(ROLES[s.role]))}</option>`).join("")}</select></div>` : ""}
     <button class="btn alt" id="mrPin">${LANG === "ar" ? "تغيير الرقم السري" : "Change my PIN"}</button><button class="btn alt" id="mrOut">${T("signOut")}</button></div>`;
 };
@@ -1460,29 +1477,26 @@ function reqPages(g) {
   return pages;
 }
 
-/* ===================== floor zones, set day by day ===================== */
-const zoneList = all => Object.entries((S.cfg && S.cfg.zones) || {}).map(([id, z]) => ({ id, ...z })).filter(z => all || z.active !== false).sort((a, b) => (a.ord || 0) - (b.ord || 0));
-const zonesOf = (date, sid) => { const pz = planOf(date).zones || {}; return zoneList().flatMap(z => ["AM", "PM"].filter(s => pz[z.id] && pz[z.id][s] === sid).map(s => ({ z, s }))); };
-const canZone = date => iAmMgr() || planOf(date).zoneBy === ME;
+/* ===================== floor zones: set-up here, daily assigning on the Plan page ===================== */
+const ZONE_DEF = () => { const z = {}; for (let i = 1; i <= 6; i++) z["z" + i] = { name: "Zone " + i, ord: i, active: true }; return z; };
+const zoneCfg = () => { const z = S.cfg && S.cfg.zones; return z && Object.keys(z).length ? z : ZONE_DEF(); };
+const zoneList = all => Object.entries(zoneCfg()).map(([id, z]) => ({ id, ...z })).filter(z => all || z.active !== false).sort((a, b) => (a.ord || 0) - (b.ord || 0));
+const zoneAsg = (date, zid) => { const v = (planOf(date).zones || {})[zid]; if (!v) return []; if (Array.isArray(v.list)) return v.list.filter(a => a && a.who); return ["AM", "PM"].filter(s => v[s]).map(s => ({ who: v[s], s })); };
+const zonesOf = (date, sid) => zoneList().flatMap(z => zoneAsg(date, z.id).filter(a => a.who === sid).map(a => ({ z, s: a.s })));
+const saveZones = patch => { const has = S.cfg && S.cfg.zones && Object.keys(S.cfg.zones).length; Data.saveCfg({ zones: has ? patch : deepMerge(ZONE_DEF(), patch) }); };
 VIEWS.zones = (me, mgr) => {
-  const d = R.date || today(), ar = LANG === "ar", p = planOf(d), pz = p.zones || {}, zl = zoneList(), can = canZone(d), days = Array.from({ length: 8 }, (_, i) => addDays(today(), i));
-  const pick = (z, s) => { const cur = (pz[z.id] && pz[z.id][s]) || "", pool = staffList().filter(x => !isOff(d, x.id) && (!shiftOf(d, x.id) || shiftOf(d, x.id) === s || x.id === cur));
-    return `<div class="field grow"><label>${s} <span class="num">${esc(shiftTime(d, s))}</span></label><select class="in" data-zs="${esc(z.id)}:${s}" ${can ? "" : "disabled"}><option value="">${T("nobody")}</option>${pool.map(x => `<option value="${esc(x.id)}" ${cur === x.id ? "selected" : ""}>${esc(x.short || x.name)}</option>`).join("")}</select></div>`; };
-  return `<div class="sec"><h1>${ar ? "مناطق الصالة" : "Floor zones"}</h1><span>${(ar ? DOW_AR : DOW)[parseD(d).getDay()]} ${fmtD(d)}</span></div>
-    <div class="days">${days.map(x => `<button data-day="${x}" class="${x === d ? "on" : ""}"><span>${x === today() ? T("today") : (ar ? DOW_AR : DOW)[parseD(x).getDay()]}</span><b class="num">${+x.slice(8)}</b><span>${MON[+x.slice(5, 7) - 1].slice(0, 3)}</span></button>`).join("")}</div>
-    ${mgr ? `<div class="card stack"><h3>${ar ? "من يوزّع المناطق هذا اليوم؟" : "Who sets the zones on this day?"}</h3><select class="in" id="znBy"><option value="">${ar ? "أنا / المدير" : "The managers only"}</option>${staffList().filter(x => !isMgrRole(x.role) && !isOff(d, x.id)).map(x => `<option value="${esc(x.id)}" ${p.zoneBy === x.id ? "selected" : ""}>${esc(x.short || x.name)}</option>`).join("")}</select><p class="small muted">${ar ? "الشخص المختار يستطيع توزيع الفريق على المناطق لهذا اليوم فقط." : "The person you choose can place the team in zones for this day only."}</p></div>` : (can ? `<div class="banner" style="background:var(--accent-soft);color:var(--accent);border-color:var(--accent)">${ar ? "أنت مسؤول عن توزيع المناطق اليوم." : "You are setting the zones for this day."}</div>` : "")}
-    ${zl.length ? `<div class="stack">${zl.map(z => `<div class="card stack"><b>${esc(z.name)}</b><div class="row" style="align-items:flex-end">${pick(z, "AM")}${pick(z, "PM")}</div></div>`).join("")}</div>${can ? `<button class="btn alt" id="znCopy">${ar ? "نسخ من اليوم السابق" : "Copy the day before"}</button>` : ""}` : `<div class="card muted">${ar ? "لم تُحدد مناطق بعد." : "No zones have been created yet."}</div>`}
-    ${mgr ? `<div class="card stack"><h3>${ar ? "المناطق" : "The zones"}</h3>${zoneList(true).map(z => `<div class="row"><input class="in grow" data-zn="${esc(z.id)}" value="${esc(z.name)}" aria-label="Zone name"><label class="row small" style="gap:6px"><input type="checkbox" data-za="${esc(z.id)}" ${z.active !== false ? "checked" : ""} style="width:20px;height:20px">${ar ? "مستخدمة" : "In use"}</label></div>`).join("")}<div class="row"><input class="in grow" id="znNew" placeholder="${ar ? "اسم منطقة جديدة" : "New zone name, for example Running wall"}"><button class="btn sm" id="znAdd">${T("add")}</button></div></div>` : ""}`;
+  const ar = LANG === "ar", all = zoneList(true), n = all.filter(z => z.active !== false).length;
+  if (!mgr) return `<div class="card muted">${ar ? "هذه الصفحة للمدير." : "This page is for the managers."}</div>`;
+  return `<div class="sec"><h1>${ar ? "إعداد المناطق" : "Zone set-up"}</h1><span class="num">${n} ${ar ? "مناطق" : "zones"}</span></div>
+    <p class="muted">${ar ? "هنا تحدد عدد المناطق وأسماءها فقط. التوزيع اليومي في صفحة الخطة." : "Only the number of zones and their names are set here. The daily assigning is on the Plan page."}</p>
+    <div class="card stack">${all.map(z => `<div class="row"><input class="in grow" data-zn="${esc(z.id)}" value="${esc(z.name)}" aria-label="Zone name"><label class="row small" style="gap:6px"><input type="checkbox" data-za="${esc(z.id)}" ${z.active !== false ? "checked" : ""} style="width:20px;height:20px">${ar ? "مستخدمة" : "In use"}</label></div>`).join("")}
+      <div class="row"><input class="in grow" id="znNew" placeholder="${ar ? "اسم منطقة جديدة" : "Name of a new zone"}"><button class="btn sm" id="znAdd">${T("add")}</button></div></div>
+    <button class="btn alt" data-go="plan">${ar ? "الذهاب إلى الخطة" : "Go to the Plan page"}</button>`;
 };
 HOOKS.zones = app => {
-  const d = R.date || today(), edit = fn => { const p = clone(planOf(d)); fn(p); Data.savePlan(d, p); };
-  app.querySelectorAll("[data-day]").forEach(b => b.onclick = () => { R.date = b.dataset.day; render(); });
-  app.querySelectorAll("[data-zs]").forEach(s => s.onchange = () => { const [z, sh] = s.dataset.zs.split(":"); edit(p => { p.zones = p.zones || {}; p.zones[z] = Object.assign({}, p.zones[z], { [sh]: s.value }); }); });
-  const by = $("#znBy", app); if (by) by.onchange = () => edit(p => { p.zoneBy = by.value; });
-  const cp = $("#znCopy", app); if (cp) cp.onclick = () => { const prev = planOf(addDays(d, -1)); edit(p => { p.zones = clone(prev.zones || {}); }); toast(T("saved")); };
-  app.querySelectorAll("[data-zn]").forEach(i => i.onchange = () => { if (i.value.trim()) Data.saveCfg({ zones: { [i.dataset.zn]: { name: i.value.trim() } } }); });
-  app.querySelectorAll("[data-za]").forEach(i => i.onchange = () => Data.saveCfg({ zones: { [i.dataset.za]: { active: i.checked } } }));
-  const add = $("#znAdd", app); if (add) add.onclick = () => { const n = $("#znNew", app).value.trim(); if (!n) return; Data.saveCfg({ zones: { ["z" + rid()]: { name: n, ord: Date.now(), active: true } } }); };
+  app.querySelectorAll("[data-zn]").forEach(i => i.onchange = () => { if (i.value.trim()) saveZones({ [i.dataset.zn]: { name: i.value.trim() } }); });
+  app.querySelectorAll("[data-za]").forEach(i => i.onchange = () => saveZones({ [i.dataset.za]: { active: i.checked } }));
+  const add = $("#znAdd", app); if (add) add.onclick = () => { const n = $("#znNew", app).value.trim(); if (!n) return; saveZones({ ["z" + rid()]: { name: n, ord: Date.now(), active: true } }); };
 };
 /* what each person sees at the top of their home page */
 function myDayCard(me) {
@@ -1492,7 +1506,8 @@ function myDayCard(me) {
   if (sh) bits.push(`<div class="kpi"><b>${sh}</b><span class="num">${sh === "OFF" ? (ar ? "إجازة" : "day off") : esc(shiftTime(d, sh))}</span></div>`);
   let h = bits.length ? `<div class="kpis" style="grid-template-columns:repeat(${bits.length},1fr)">${bits.join("")}</div>` : "";
   if (zs.length) h += `<div class="card row"><span class="chip acc">${ar ? "منطقتك" : "Your zone"}</span><b class="grow">${zs.map(x => `${esc(x.z.name)} <span class="muted small">(${x.s})</span>`).join(" · ")}</b></div>`;
-  if (!iAmMgr() && planOf(d).zoneBy === ME) h += `<button class="task due" data-go="zones"><span class="grow"><b>${ar ? "وزّع الفريق على المناطق اليوم" : "Place the team in zones today"}</b><small>${ar ? "كلّفك المدير بذلك" : "The manager asked you to do this"}</small></span>${ICON.chev}</button>`;
+  const pl = planOf(d), jobs = [pl.taskBy === ME ? (ar ? "المهام" : "tasks") : "", pl.zoneBy === ME ? (ar ? "المناطق" : "zones") : ""].filter(Boolean);
+  if (!iAmMgr() && jobs.length) h += `<button class="task due" data-go="plan"><span class="grow"><b>${ar ? "وزّع اليوم: " : "Assign today's "}${jobs.join(ar ? " و" : " and ")}</b><small>${ar ? "كلّفك المدير بذلك" : "The manager asked you to do this"}</small></span>${ICON.chev}</button>`;
   return h;
 }
 
