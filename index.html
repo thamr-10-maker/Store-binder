@@ -792,8 +792,9 @@ const rememberKey = (id, k) => `sb-last-${id}-${k}`;
 function defVal(f, fd, data) {
   if (fd.calc) return fd.calc(data);
   if (fd.def === "me") return ME; if (fd.def === "now") return nowHM(); if (fd.def === "today") return today();
-  if (f.id === "huddle" && fd.k === "todayTarget" && budgetOf(W.date) !== null) return String(budgetOf(W.date));
-  if (f.id === "huddle" && fd.k === "monthTarget" && monthBudget(ymOf(W.date))) return String(monthBudget(ymOf(W.date)));
+  if (f.id === "huddle") { const v = huddleFromDsr(fd.k, W.date); if (v !== null) return v; }
+  if (f.id === "huddle" && fd.k === "todayTarget" && targetSAR(W.date) !== null) return String(Math.round(targetSAR(W.date)));
+  if (f.id === "huddle" && fd.k === "monthTarget" && monthTargetSAR(ymOf(W.date))) return String(Math.round(monthTargetSAR(ymOf(W.date))));
   if (fd.cfgDef) return (S.cfg && S.cfg.huddle && S.cfg.huddle[fd.cfgDef]) || "";
   if (fd.remember) { try { return localStorage.getItem(rememberKey(f.id, fd.k)) || ""; } catch (e) { return ""; } }
   if (fd.t === "rows") {
@@ -920,7 +921,9 @@ function renderField() {
   const ps = $("#wzPaste", el); if (ps) ps.onclick = () => pasteRows(fd);
   $("#wzBack", el).onclick = () => { W.otherOpen = false; W.dir = -1; W.i--; renderWiz(); };
   $("#wzNext", el).onclick = () => { const v = W.data[fd.k], empty = v === "" || v == null || (Array.isArray(v) && v.length < (fd.min || 1));
-    if (empty && !fd.opt) { toast(T("required")); return; } W.otherOpen = false; W.dir = 1; W.i++; renderWiz(); };
+    if (empty && !fd.opt) { toast(T("required")); return; }
+    if (fd.sum && !empty) { const parts = String(v).split("+").map(x => num(x)); if (parts.some(x => x === null)) { toast(LANG === "ar" ? "اكتب رقماً أو عملية جمع فقط" : "Type a number, or numbers joined with +"); return; } W.data[fd.k] = String(Math.round(parts.reduce((a, b) => a + b, 0) * 100) / 100); }
+    W.otherOpen = false; W.dir = 1; W.i++; renderWiz(); };
 }
 function rowEditor(fd, idx) {
   const rows = W.data[fd.k] || (W.data[fd.k] = []), row = idx >= 0 ? clone(rows[idx]) : {};
@@ -1256,7 +1259,7 @@ HOOKS.review = app => {
 /* ---- more ---- */
 VIEWS.more = (me, mgr) => {
   const link = (v, label, sub) => `<button class="task" data-go="${v}"><span class="grow"><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</span>${ICON.chev}</button>`;
-  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("budget", LANG === "ar" ? "الأهداف اليومية" : "Budget", LANG === "ar" ? "ارفع أهداف الشهر مسبقاً" : "Load the month's daily budget in advance") + link("requests", LANG === "ar" ? "طلب التزويد" : "Replenishment request", LANG === "ar" ? "ما طلبه العملاء ولم يتوفر" : "What customers asked for and we did not have") + link("zones", LANG === "ar" ? "إعداد المناطق" : "Zone set-up", LANG === "ar" ? "عدد المناطق وأسماؤها" : "How many zones the store has, and their names") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota")}
+  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("dsr", LANG === "ar" ? "تقرير المبيعات اليومي" : "Daily Sales Report", LANG === "ar" ? "أدخل أرقام الإغلاق واحصل على الملخص" : "Enter the closing figures and get the summary") + link("budget", LANG === "ar" ? "الأهداف اليومية" : "Budget", LANG === "ar" ? "ارفع أهداف الشهر مسبقاً" : "Load the month's daily budget in advance") + link("requests", LANG === "ar" ? "طلب التزويد" : "Replenishment request", LANG === "ar" ? "ما طلبه العملاء ولم يتوفر" : "What customers asked for and we did not have") + link("zones", LANG === "ar" ? "إعداد المناطق" : "Zone set-up", LANG === "ar" ? "عدد المناطق وأسماؤها" : "How many zones the store has, and their names") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota")}
     ${mgr && !REAL ? `<div class="card stack"><b>${T("viewAs")}</b><select class="in" id="mrAs"><option value="">—</option>${staffList().filter(s => s.id !== ME).map(s => `<option value="${esc(s.id)}">${esc(s.short || s.name)} · ${esc(L(ROLES[s.role]))}</option>`).join("")}</select></div>` : ""}
     <button class="btn alt" id="mrPin">${LANG === "ar" ? "تغيير الرقم السري" : "Change my PIN"}</button><button class="btn alt" id="mrOut">${T("signOut")}</button></div>`;
 };
@@ -1389,7 +1392,7 @@ function parseRota(rows, fallbackWs) {
 const budgetOf = date => { const b = S.budgets[ymOf(date)], v = b && b.days && b.days[date.slice(8)]; const n = num(v); return n === null ? null : n; };
 const monthBudget = ym => { const b = S.budgets[ym]; return b && b.days ? Object.values(b.days).reduce((a, v) => a + (num(v) || 0), 0) : 0; };
 const salesOn = date => staffList().filter(s => (s.role === "ss" || s.role === "sa") && !isOff(date, s.id));
-const shareOf = date => { const b = budgetOf(date), n = salesOn(date).length; return b !== null && n && (!S.cfg || S.cfg.budgetSplit !== false) ? Math.round(b / n) : null; };
+const shareOf = date => { const b = targetSAR(date), n = salesOn(date).length; return b !== null && n && (!S.cfg || S.cfg.budgetSplit !== false) ? Math.round(b / n) : null; };
 function parseBudgetRows(rows, ym) {          // rows of [date, ..., amount]  or a plain column of amounts
   const out = {}; let n = 0;
   const plain = rows.map(r => r.filter(c => c !== "" && c != null)).filter(r => r.length);
@@ -1402,7 +1405,7 @@ VIEWS.budget = () => {
   const ym = R.ym || ymOf(today()), ar = LANG === "ar", last = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(), b = (S.budgets[ym] && S.budgets[ym].days) || {}, tot = monthBudget(ym), set = Object.values(b).filter(v => num(v) !== null).length;
   return `<div class="sec"><h1>${ar ? "الأهداف اليومية" : "Budget"}</h1></div>
     <div class="row"><button class="btn sm alt" id="bgPrev">←</button><b class="grow" style="text-align:center">${monthLabel(ym)}</b><button class="btn sm alt" id="bgNext">→</button></div>
-    <div class="kpis"><div class="kpi" style="grid-column:span 2"><b class="num">${money(tot)}</b><span>${ar ? "هدف الشهر (ريال)" : "month budget (SAR)"}</span></div><div class="kpi"><b class="num">${set}/${last}</b><span>${ar ? "أيام محددة" : "days set"}</span></div></div>
+    <div class="kpis"><div class="kpi" style="grid-column:span 2"><b class="num">${money(tot)}</b><span>${ar ? "هدف الشهر" : "month budget"} (${dsrCfg().budgetCur})</span></div><div class="kpi"><b class="num">${set}/${last}</b><span>${ar ? "أيام محددة" : "days set"}</span></div></div>
     <div class="card stack"><h3>${ar ? "رفع الأهداف مسبقاً" : "Load the budget in advance"}</h3><p class="small muted">${ar ? "ارفع نموذج الإكسل، أو الصق عمود المبالغ (يوم لكل سطر) أو عمودين: التاريخ والمبلغ." : "Upload the Excel form, or paste either one amount per line for every day of this month, or two columns: date and amount."}</p>
       ${fileBtn("bgFile", ar ? "رفع ملف الإكسل" : "Upload the Excel form")}<textarea class="in" id="bgPaste" rows="4" placeholder="01.12.2026	52000"></textarea><button class="btn soft" id="bgPasteGo">${ar ? "استخدام ما تم لصقه" : "Use what I pasted"}</button><p class="small" id="bgMsg"></p></div>
     <label class="row card" style="gap:10px"><input type="checkbox" id="bgSplit" ${!S.cfg || S.cfg.budgetSplit !== false ? "checked" : ""} style="width:22px;height:22px"><span class="grow">${ar ? "تقسيم هدف اليوم بالتساوي على البائعين العاملين" : "Split the day's budget equally between the sales staff working that day"}<div class="small muted">${ar ? "يظهر لكل بائع نصيبه في صفحته وفي الاجتماع اليومي." : "Each sales person sees their share on their page and in the Daily Huddle."}</div></span></label>
@@ -1505,7 +1508,7 @@ HOOKS.zones = app => {
 };
 /* what each person sees at the top of their home page */
 function myDayCard(me) {
-  const d = today(), ar = LANG === "ar", sh = shiftOf(d, ME), b = budgetOf(d), share = (me.role === "ss" || me.role === "sa") && !isOff(d, ME) ? shareOf(d) : null, zs = zonesOf(d, ME), bits = [];
+  const d = today(), ar = LANG === "ar", sh = shiftOf(d, ME), b = targetSAR(d), share = (me.role === "ss" || me.role === "sa") && !isOff(d, ME) ? shareOf(d) : null, zs = zonesOf(d, ME), bits = [];
   if (b !== null) bits.push(`<div class="kpi"><b class="num">${money(b)}</b><span>${ar ? "هدف المتجر اليوم (ريال)" : "store target today (SAR)"}</span></div>`);
   if (share !== null) bits.push(`<div class="kpi"><b class="num">${money(share)}</b><span>${ar ? "نصيبك اليوم (ريال)" : "your share today (SAR)"}</span></div>`);
   if (sh) bits.push(`<div class="kpi"><b>${sh}</b><span class="num">${sh === "OFF" ? (ar ? "إجازة" : "day off") : esc(shiftTime(d, sh))}</span></div>`);
@@ -1514,6 +1517,96 @@ function myDayCard(me) {
   const pl = planOf(d), jobs = [pl.taskBy === ME ? (ar ? "المهام" : "tasks") : "", pl.zoneBy === ME ? (ar ? "المناطق" : "zones") : ""].filter(Boolean);
   if (!iAmMgr() && jobs.length) h += `<button class="task due" data-go="plan"><span class="grow"><b>${ar ? "وزّع اليوم: " : "Assign today's "}${jobs.join(ar ? " و" : " and ")}</b><small>${ar ? "كلّفك المدير بذلك" : "The manager asked you to do this"}</small></span>${ICON.chev}</button>`;
   return h;
+}
+
+/* ===================== daily sales report (same sums as the company DSR file) ===================== */
+const dsrCfg = () => Object.assign({ rate: 0.9778, atv: 800, upt: 1.4, conv: 14, budgetCur: "AED" }, (S.cfg && S.cfg.dsr) || {});
+const targetAED = d => { const b = budgetOf(d), c = dsrCfg(); return b === null ? null : c.budgetCur === "AED" ? b : b * c.rate; };
+const targetSAR = d => { const b = budgetOf(d), c = dsrCfg(); return b === null ? null : c.budgetCur === "AED" ? b / c.rate : b; };
+const monthTargetSAR = ym => { let t = 0; for (let i = 1; i <= 31; i++) { const v = targetSAR(`${ym}-${pad2(i)}`); if (v !== null) t += v; } return t; };
+const dsrRec = d => S.recs.get("dsr_" + d);
+FORMS.dsr = { id: "dsr", letter: "DSR", kind: "sheet", single: "day", mgr: true, noPrint: true, title: q("Daily Sales Report", "تقرير المبيعات اليومي"), sched: { freq: "daily", due: "23:55", who: "dsm" }, fields: [
+  { k: "sales", t: "text", sum: 1, q: q("Total sales today (SAR)", "إجمالي مبيعات اليوم (ريال)"), hint: q("You can type a sum, for example 18100+5925.", "يمكنك كتابة عملية جمع، مثال: 18100+5925") },
+  { k: "inv", t: "num", q: q("Number of invoices", "عدد الفواتير") }, { k: "units", t: "num", q: q("Units sold", "القطع المباعة") },
+  { k: "foot", t: "num", q: q("Footfall", "عدد الزوار"), opt: 1 }, { k: "crm", t: "num", q: q("CRM sign-ups", "تسجيلات العملاء CRM"), opt: 1 }, { k: "exch", t: "num", q: q("Exchanges", "عدد الاستبدالات"), opt: 1 },
+  { k: "refunds", t: "money", q: q("Refunds (SAR)", "المرتجعات (ريال)"), opt: 1 }, { k: "salesLY", t: "money", q: q("Sales last year, same day (SAR)", "مبيعات نفس اليوم العام الماضي (ريال)"), opt: 1 },
+  { k: "footLY", t: "num", q: q("Footfall last year, same day", "عدد الزوار نفس اليوم العام الماضي"), opt: 1 }, { k: "comments", t: "long", q: q("Comments", "تعليقات"), opt: 1 }] };
+FORM_ORDER.push("dsr");
+function dsrCalc(date) {
+  const c = dsrCfg(), r = dsrRec(date), d = r ? r.data : {}, n = (o2, k) => { const v = num(o2[k]); return v === null ? 0 : v; }, kpi = (a, t) => ({ a, t, v: a !== null && t ? a / t - 1 : null });
+  const pack = (sales, inv, units, foot, tgt, has) => { const aed = sales * c.rate; return { has, salesSAR: sales, inv, units, foot,
+    sales: kpi(has ? aed : null, tgt || null), atv: kpi(has && inv ? aed / inv : null, c.atv * c.rate), upt: kpi(has && inv ? units / inv : null, +c.upt), conv: kpi(has && foot ? inv / foot : null, c.conv / 100) }; };
+  let s = 0, iv = 0, un = 0, ft = 0, tg = 0, days = 0;
+  for (let x = date.slice(0, 8) + "01"; x <= date; x = addDays(x, 1)) { const t = targetAED(x); if (t !== null) tg += t; const rr = dsrRec(x); if (rr) { days++; s += n(rr.data, "sales"); iv += n(rr.data, "inv"); un += n(rr.data, "units"); ft += n(rr.data, "foot"); } }
+  return { date, day: pack(n(d, "sales"), n(d, "inv"), n(d, "units"), n(d, "foot"), targetAED(date), !!r), mtd: pack(s, iv, un, ft, tg, days > 0), days, rec: r };
+}
+const fInt = v => (v === null || v === undefined ? "-" : Math.round(v).toLocaleString("en-US"));
+const fPct = (v, sign) => (v === null || v === undefined ? "-" : (sign && v > 0 ? "+" : "") + (v * 100).toFixed(1) + "%");
+const f2 = v => (v === null || v === undefined ? "-" : v.toFixed(2));
+const dsrRows = b => [["Sales (AED)", fInt(b.sales.a), fInt(b.sales.t), b.sales.v], ["ATV (AED)", fInt(b.atv.a), fInt(b.atv.t), b.atv.v], ["UPT", f2(b.upt.a), f2(b.upt.t), b.upt.v], ["Conversion", fPct(b.conv.a), fPct(b.conv.t), b.conv.v]];
+const longDate = d => `${+d.slice(8)} ${MON[+d.slice(5, 7) - 1]} ${d.slice(0, 4)}`;
+const dsrTitle = () => `DAILY SALES REPORT | ${(S.cfg && S.cfg.store && S.cfg.store.name) || ""}`;
+function dsrText(k) {
+  const blk = (t, b) => [t, ...dsrRows(b).map(r => `${r[0]}: ${r[1]}  |  Target ${r[2]}  |  ${fPct(r[3], 1)}`)];
+  return [dsrTitle(), "Report date: " + longDate(k.date), "", ...blk("DAILY PERFORMANCE", k.day), "", ...blk("MONTH TO DATE", k.mtd), ...(k.rec && k.rec.data.comments ? ["", "Comments: " + k.rec.data.comments] : [])].join("\n");
+}
+async function dsrImage(k) {
+  const W2 = 1000, H2 = 700, cv = document.createElement("canvas"); cv.width = W2 * 2; cv.height = H2 * 2; const c = cv.getContext("2d"); c.scale(2, 2);
+  c.fillStyle = "#fff"; c.fillRect(0, 0, W2, H2); c.fillStyle = "#111"; c.textBaseline = "middle";
+  c.font = `bold 30px ${PFONT}`; c.textAlign = "left"; c.fillText(dsrTitle(), 40, 52, 860);
+  try { const lg = await loadBg("logo"); c.drawImage(lg, 912, 24, 48, 48); } catch (e) {}
+  c.font = `18px ${PFONT}`; c.fillStyle = "#444"; c.fillText("Report date", 40, 100); c.fillStyle = "#111"; c.font = `bold 18px ${PFONT}`; c.fillText(longDate(k.date), 170, 100);
+  const X = [40, 340, 560, 780, 960], table = (y, title, b) => {
+    c.fillStyle = "#111"; c.fillRect(40, y, 920, 40); c.fillStyle = "#fff"; c.font = `bold 18px ${PFONT}`; c.textAlign = "left"; c.fillText(title, 54, y + 20); y += 40;
+    c.fillStyle = "#e9ecea"; c.fillRect(40, y, 920, 36); c.fillStyle = "#111"; c.font = `bold 16px ${PFONT}`; ["KPI", "Actual", "Target", "Variance %"].forEach((t, i) => { c.textAlign = i ? "right" : "left"; c.fillText(t, i ? X[i + 1] - 16 : 54, y + 18); }); y += 36;
+    dsrRows(b).forEach(r => { c.strokeStyle = "#cfd4d1"; c.lineWidth = 1; c.beginPath(); c.moveTo(40, y + 44); c.lineTo(960, y + 44); c.stroke();
+      c.fillStyle = "#111"; c.font = `17px ${PFONT}`; c.textAlign = "left"; c.fillText(r[0], 54, y + 22); c.font = `bold 19px ${PFONT}`; c.textAlign = "right"; c.fillText(r[1], X[2] - 16, y + 22); c.font = `17px ${PFONT}`; c.fillText(r[2], X[3] - 16, y + 22);
+      c.font = `bold 18px ${PFONT}`; c.fillStyle = r[3] === null ? "#777" : r[3] >= 0 ? "#1f7a45" : "#b3261e"; c.fillText(fPct(r[3], 1), X[4] - 16, y + 22); y += 44; });
+    c.strokeStyle = "#111"; c.lineWidth = 1.5; c.strokeRect(40, y - 252, 920, 252); return y; };
+  let y = table(130, "DAILY PERFORMANCE", k.day); table(y + 26, "MONTH TO DATE", k.mtd);
+  return new Promise(res => cv.toBlob(res, "image/png"));
+}
+async function saveBlob(blob, filename) {
+  if (DOWNLOADS) { try { await DOWNLOADS.save({ filename, data: blob }); return true; } catch (e) { if (!(e && e.code === "declined")) toast("Could not save the file."); return false; } }
+  try { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); a.remove(); return true; } catch (e) { toast("Saving files is not available in this view."); return false; }
+}
+VIEWS.dsr = () => {
+  const d = R.date || today(), ar = LANG === "ar", k = dsrCalc(d), c = dsrCfg(), r = k.rec, x = r ? r.data : {};
+  const tbl = (title, b) => `<div class="card stack" style="padding:0;overflow:hidden"><div style="background:var(--ink);color:var(--bg);padding:10px 14px;font-weight:700">${title}</div><div class="scroll" style="padding:0 8px 8px"><table class="t num"><tr><th>KPI</th><th style="text-align:end">Actual</th><th style="text-align:end">Target</th><th style="text-align:end">Var %</th></tr>${dsrRows(b).map(rw => `<tr><td>${rw[0]}</td><td style="text-align:end"><b>${rw[1]}</b></td><td style="text-align:end">${rw[2]}</td><td style="text-align:end;font-weight:700;color:var(--${rw[3] === null ? "muted" : rw[3] >= 0 ? "ok" : "bad"})">${fPct(rw[3], 1)}</td></tr>`).join("")}</table></div></div>`;
+  const cells = [["B", "Sales SAR", x.sales], ["H", "Sales LY SAR", x.salesLY], ["J", "Invoices", x.inv], ["K", "Units", x.units], ["N", "Footfall", x.foot], ["P", "LY Footfall", x.footLY], ["R", "CRM", x.crm], ["T", "Exchanges", x.exch], ["U", "Refunds SAR", x.refunds], ["W", "Comments", x.comments]];
+  return `<div class="sec"><h1>${ar ? "تقرير المبيعات اليومي" : "Daily Sales Report"}</h1></div>
+    <div class="row"><button class="btn sm alt" id="dsPrev">←</button><input class="in grow num" type="date" id="dsDate" value="${d}" style="text-align:center"><button class="btn sm alt" id="dsNext" ${d >= today() ? "disabled" : ""}>→</button></div>
+    ${r ? `<div class="row"><span class="chip ok">✓ ${ar ? "تم الإدخال" : "Filled in"}</span><span class="grow small muted">${esc(shortName(r.by))}</span><button class="btn sm alt" data-form="dsr" data-date="${d}">${T("edit")}</button></div>` : `<button class="btn" data-form="dsr" data-date="${d}">${ar ? "إدخال أرقام هذا اليوم" : "Enter this day's figures"}</button>`}
+    ${targetAED(d) === null ? `<div class="banner">${ar ? "لا يوجد هدف لهذا اليوم. أضفه من صفحة الأهداف." : "There is no budget for this day yet. Add it on the Budget page."}</div>` : ""}
+    <p class="muted small">${ar ? "تاريخ التقرير" : "Report date"}: <b>${longDate(d)}</b></p>
+    ${tbl("DAILY PERFORMANCE", k.day)}${tbl("MONTH TO DATE", k.mtd)}
+    <div class="row"><button class="btn grow" id="dsCopy" ${r ? "" : "disabled"}>${ar ? "نسخ الملخص كنص" : "Copy the summary as text"}</button><button class="btn alt grow" id="dsPic" ${r ? "" : "disabled"}>${ar ? "حفظ كصورة" : "Save as a picture"}</button></div>
+    ${r ? `<div class="card stack"><h3>${ar ? "للملف الإلكتروني" : "For the online file"}</h3><p class="small muted">${ar ? "اضغط القيمة لنسخها ثم الصقها في العمود المذكور في صف اليوم. باقي الأعمدة معادلات تُحسب تلقائياً." : "Tap a value to copy it, then paste it into that column on the day's row. The other columns are formulas and fill in by themselves."}</p>
+      <div class="list">${cells.filter(z => z[2] !== "" && z[2] != null).map(z => `<button class="row" data-cp="${esc(z[2])}" style="text-align:start;background:none;border-left:0;border-right:0;border-bottom:0;width:100%"><span class="chip acc">${z[0]}</span><span class="grow">${z[1]}</span><b class="num">${esc(z[2])}</b></button>`).join("")}</div>
+      ${x.inv !== "" && x.units !== "" ? `<button class="btn sm alt" data-cp="${esc(x.inv)}\t${esc(x.units)}">${ar ? "نسخ الفواتير والقطع معاً (J و K)" : "Copy Invoices and Units together (J and K)"}</button>` : ""}</div>` : ""}
+    <div class="card stack"><h3>${ar ? "إعدادات التقرير" : "Report settings"}</h3>
+      <div class="row"><div class="field grow"><label for="dc_rate">SAR → AED</label><input class="in num" id="dc_rate" inputmode="decimal" value="${esc(c.rate)}"></div><div class="field grow"><label for="dc_atv">ATV target (SAR)</label><input class="in num" id="dc_atv" inputmode="decimal" value="${esc(c.atv)}"></div></div>
+      <div class="row"><div class="field grow"><label for="dc_upt">UPT target</label><input class="in num" id="dc_upt" inputmode="decimal" value="${esc(c.upt)}"></div><div class="field grow"><label for="dc_conv">Conversion target (%)</label><input class="in num" id="dc_conv" inputmode="decimal" value="${esc(c.conv)}"></div></div>
+      <div class="field"><label for="dc_cur">${ar ? "عملة الأهداف التي حمّلتها في صفحة الأهداف" : "The budget figures loaded on the Budget page are in"}</label><select class="in" id="dc_cur"><option value="AED" ${c.budgetCur === "AED" ? "selected" : ""}>AED</option><option value="SAR" ${c.budgetCur === "SAR" ? "selected" : ""}>SAR</option></select></div></div>`;
+};
+HOOKS.dsr = app => {
+  const d = R.date || today(), k = dsrCalc(d);
+  $("#dsPrev", app).onclick = async () => { R.date = addDays(d, -1); await loadMonth(ymOf(R.date)); render(); }; $("#dsNext", app).onclick = () => { R.date = addDays(d, 1); render(); };
+  $("#dsDate", app).onchange = async e => { if (e.target.value) { R.date = e.target.value; await loadMonth(ymOf(R.date)); render(); } };
+  const copy = async t => { try { await navigator.clipboard.writeText(t); toast(LANG === "ar" ? "تم النسخ" : "Copied"); } catch (e) { toast(LANG === "ar" ? "تعذّر النسخ" : "Could not copy"); } };
+  $("#dsCopy", app).onclick = () => copy(dsrText(k));
+  $("#dsPic", app).onclick = async () => { const b = await dsrImage(k); if (await saveBlob(b, `DSR_${d}.png`)) toast(T("saved")); };
+  app.querySelectorAll("[data-cp]").forEach(b => b.onclick = () => copy(b.dataset.cp));
+  [["rate", "dc_rate"], ["atv", "dc_atv"], ["upt", "dc_upt"], ["conv", "dc_conv"]].forEach(([key, id]) => { const e = $("#" + id, app); e.onchange = () => { const v = num(e.value); if (v !== null && v > 0) Data.saveCfg({ dsr: { [key]: v } }); }; });
+  $("#dc_cur", app).onchange = e => Data.saveCfg({ dsr: { budgetCur: e.target.value } });
+};
+/* yesterday's report fills the Daily Huddle */
+function huddleFromDsr(key, date) {
+  const y = addDays(date, -1), r = dsrRec(y); if (!r) return null; const d = r.data, s = num(d.sales), iv = num(d.inv), un = num(d.units), ft = num(d.foot);
+  if (key === "salesY") return s === null ? null : String(s); if (key === "unitsY") return un === null ? null : String(un); if (key === "invY") return iv === null ? null : String(iv);
+  if (key === "uptY") return iv && un !== null ? (un / iv).toFixed(2) : null; if (key === "atvY") return iv && s !== null ? String(Math.round(s / iv)) : null; if (key === "convY") return ft && iv !== null ? (iv / ft * 100).toFixed(1) + "%" : null;
+  if (key === "mtdSales" || key === "mtdAch") { let tot = 0, tg = 0; for (let x = y.slice(0, 8) + "01"; x <= y; x = addDays(x, 1)) { const rr = dsrRec(x); if (rr) tot += num(rr.data.sales) || 0; const t = targetSAR(x); if (t !== null) tg += t; } return key === "mtdSales" ? String(Math.round(tot)) : (tg ? Math.round(tot / tg * 100) + "%" : null); }
+  return null;
 }
 
 /* ===================== settings ===================== */
