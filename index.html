@@ -1659,7 +1659,7 @@ function zParse(text) {
   out.fin = fin3 ? fin3[2] : out.caisse !== null && out.sales !== null ? +(out.caisse - out.sales).toFixed(2) : 0;
   if (out.caisse === null && out.sales !== null) out.caisse = +(out.sales + out.fin).toFixed(2);
   /* payments must add up to the register total (sales plus any cash float movement) */
-  const pay = {}; [["mada", /^[MH]ADA\b/i], ["mc", /^Master/i], ["visa", /^Visa\b/i], ["amex", /^Am(ex|erican)/i], ["tamara", /Tamara/i], ["tabby", /Tabby/i]].forEach(([k2, re]) => { const l = find(re)[0]; if (l) { const a = amt(l).pop(); if (a !== undefined) pay[k2] = a; } });
+  const pay = {}; [["mada", /^[MH]ADA\b/i], ["mc", /^Master/i], ["visa", /^Visa\b/i], ["amex", /^Am(ex|erican)/i], ["tamara", /Tamara/i], ["tabby", /Tabby/i], ["other", /^Other/i]].forEach(([k2, re]) => { const l = find(re)[0]; if (l) { const a = amt(l).pop(); if (a !== undefined) pay[k2] = a; } });
   const others = Object.values(pay).reduce((a, b) => a + b, 0), sub = find(/subtotal/i)[0], subV = sub ? amt(sub).pop() : undefined;
   out.payOk = false;
   if (out.caisse !== null) { const need = +(out.caisse - others).toFixed(2);
