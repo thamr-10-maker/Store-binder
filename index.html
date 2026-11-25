@@ -213,7 +213,7 @@ const ROLES = {
 const isMgrRole = r => r === "sm" || r === "dsm";
 
 /* ===================== state + data layer ===================== */
-const S = { mode: "loading", canWrite: true, cfg: null, recs: new Map(), plans: {}, audits: {}, binder: {}, reviews: {}, rotas: {}, months: new Set(), ready: false };
+const S = { mode: "loading", canWrite: true, cfg: null, recs: new Map(), plans: {}, audits: {}, binder: {}, reviews: {}, rotas: {}, budgets: {}, months: new Set(), ready: false };
 let DB = null, DOWNLOADS = null;
 const LS_KEY = "sb-local-v1";
 const listeners = [];
@@ -222,7 +222,7 @@ function notify() { listeners.forEach(f => { try { f(); } catch (e) { console.er
 function lsLoad() { try { return JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch (e) { return null; } }
 function lsSave() {
   if (S.mode !== "local") return;
-  try { localStorage.setItem(LS_KEY, JSON.stringify({ cfg: S.cfg, recs: [...S.recs.entries()], plans: S.plans, audits: S.audits, binder: S.binder, reviews: S.reviews, rotas: S.rotas })); } catch (e) {}
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ cfg: S.cfg, recs: [...S.recs.entries()], plans: S.plans, audits: S.audits, binder: S.binder, reviews: S.reviews, rotas: S.rotas, budgets: S.budgets })); } catch (e) {}
 }
 function writeFail(e) { console.error("write failed", e); if (e && e.code === "invalid_argument") { S.canWrite = false; } toast(LANG === "ar" ? "تعذّر الحفظ. حاول مرة أخرى." : "Could not save. Please try again."); notify(); }
 
@@ -241,7 +241,7 @@ async function dataInit() {
   if (!db) {
     S.mode = "local";
     const d = lsLoad();
-    if (d) { S.cfg = d.cfg; S.recs = new Map(d.recs || []); S.plans = d.plans || {}; S.audits = d.audits || {}; S.binder = d.binder || {}; S.reviews = d.reviews || {}; S.rotas = d.rotas || {}; }
+    if (d) { S.cfg = d.cfg; S.recs = new Map(d.recs || []); S.plans = d.plans || {}; S.audits = d.audits || {}; S.binder = d.binder || {}; S.reviews = d.reviews || {}; S.rotas = d.rotas || {}; S.budgets = d.budgets || {}; }
     S.ready = true; notify(); return;
   }
   DB = db; S.mode = "cloud";
@@ -258,6 +258,7 @@ async function dataInit() {
   db.collection("audit").onSnapshot(q => { S.audits = {}; q.docs.forEach(d => { S.audits[d.id] = clone(d.data()); }); notify(); }, onErr);
   db.collection("binder").onSnapshot(q => { S.binder = {}; q.docs.forEach(d => { S.binder[d.id] = clone(d.data()); }); notify(); }, onErr);
   db.collection("rota").where("ws", ">=", addDays(t, -60)).onSnapshot(q => { q.docs.forEach(d => { S.rotas[d.id] = clone(d.data()); }); notify(); }, onErr);
+  db.collection("budget").onSnapshot(q => { q.docs.forEach(d => { S.budgets[d.id] = clone(d.data()); }); notify(); }, onErr);
   db.collection("review").onSnapshot(q => { S.reviews = {}; q.docs.forEach(d => { S.reviews[d.id] = clone(d.data()); }); notify(); }, onErr);
 }
 async function loadMonth(ym) {             // older months, read once when asked for
@@ -268,7 +269,7 @@ async function loadMonth(ym) {             // older months, read once when asked
 const queues = {};                          // one write at a time per document
 function qWrite(path, fn) { const p = (queues[path] || Promise.resolve()).then(fn).catch(writeFail); queues[path] = p; return p; }
 
-const COLKEY = { audit: "audits", review: "reviews", binder: "binder", rota: "rotas" };
+const COLKEY = { audit: "audits", review: "reviews", binder: "binder", rota: "rotas", budget: "budgets" };
 const Data = {
   saveCfg(patch) {                          // merge into settings
     const existed = !!S.cfg; S.cfg = deepMerge(S.cfg || {}, clone(patch)); lsSave(); notify();
@@ -786,10 +787,12 @@ const rememberKey = (id, k) => `sb-last-${id}-${k}`;
 function defVal(f, fd, data) {
   if (fd.calc) return fd.calc(data);
   if (fd.def === "me") return ME; if (fd.def === "now") return nowHM(); if (fd.def === "today") return today();
+  if (f.id === "huddle" && fd.k === "todayTarget" && budgetOf(W.date) !== null) return String(budgetOf(W.date));
+  if (f.id === "huddle" && fd.k === "monthTarget" && monthBudget(ymOf(W.date))) return String(monthBudget(ymOf(W.date)));
   if (fd.cfgDef) return (S.cfg && S.cfg.huddle && S.cfg.huddle[fd.cfgDef]) || "";
   if (fd.remember) { try { return localStorage.getItem(rememberKey(f.id, fd.k)) || ""; } catch (e) { return ""; } }
   if (fd.t === "rows") {
-    if (fd.seed === "duty") return staffList().filter(s => !isOff(W.date, s.id)).slice(0, fd.max).map(s => ({ who: s.id, timing: shiftOf(W.date, s.id) }));
+    if (fd.seed === "duty") return staffList().filter(s => !isOff(W.date, s.id)).slice(0, fd.max).map(s => ({ who: s.id, timing: shiftTime(W.date, shiftOf(W.date, s.id)), ttarget: (s.role === "ss" || s.role === "sa") && shareOf(W.date) !== null ? String(shareOf(W.date)) : "" }));
     if (fd.seed === "variance") { const sc = S.recs.get("stockcheck_" + W.date); if (!sc) return [];
       return (sc.data.items || []).map(it => { const fin = it.recount !== "" && it.recount != null ? it.recount : it.phy; return { it, fin }; }).filter(x => num(x.fin) !== null && num(x.it.sys) !== null && num(x.fin) !== num(x.it.sys))
         .map(x => ({ ref: [x.it.style, x.it.desc, x.it.size].filter(Boolean).join(" "), sys: x.it.sys, phy: x.fin, remark: x.it.remark || "" })).slice(0, fd.max); }
@@ -876,7 +879,9 @@ function inputHtml(fd, val, idp = "wz") {
 function renderField() {
   const f = W.f, fields = W.fields, n = fields.length;
   if (W.i >= n) return finishForm();
-  const fd = fields[W.i], val = W.data[fd.k];
+  const fd = fields[W.i];
+  if (fd.showIf && !fd.showIf(W.data)) { W.data[fd.k] = ""; W.i += W.dir === -1 ? -1 : 1; if (W.i < 0) { W.i = 0; W.dir = 1; } return renderWiz(); }
+  const val = W.data[fd.k];
   let body = `<div class="muted num"><bdi dir="ltr">${W.i + 1} / ${n}</bdi>${fd.opt ? " · " + T("optional") : ""}</div><div class="q ${L(fd.q).length > 70 ? "long" : ""}">${esc(L(fd.q))}</div>${fd.hint ? `<p class="hint">${esc(L(fd.hint))}</p>` : ""}`;
   const auto = ["yesno", "choice", "staff"].includes(fd.t);
   if (fd.t === "yesno") body += `<div class="opts two"><button class="opt huge yes ${val === "y" ? "on" : ""}" data-v="y">${T("yes")}</button><button class="opt huge no ${val === "n" ? "on" : ""}" data-v="n">${T("no")}</button></div>`;
@@ -904,13 +909,13 @@ function renderField() {
     if (b.dataset.other) { W.otherOpen = true; W.data[fd.k] = ""; return renderWiz(); }
     const v = b.dataset.v; W.otherOpen = false;
     if (fd.t === "multi") { const cur = new Set(val || []); if (cur.has(v)) cur.delete(v); else { if (fd.max && cur.size >= fd.max) return toast(`Max ${fd.max}`); cur.add(v); } W.data[fd.k] = [...cur]; return renderWiz(); }
-    W.data[fd.k] = v; if (fd.k === "cat") W.data.type = ""; if (auto) { W.i++; } renderWiz(); });
+    W.data[fd.k] = v; if (fd.k === "cat") W.data.type = ""; if (auto) { W.dir = 1; W.i++; } renderWiz(); });
   el.querySelectorAll("[data-row]").forEach(b => b.onclick = () => rowEditor(fd, +b.dataset.row));
   const ad = $("#wzAdd", el); if (ad) ad.onclick = () => rowEditor(fd, -1);
   const ps = $("#wzPaste", el); if (ps) ps.onclick = () => pasteRows(fd);
-  $("#wzBack", el).onclick = () => { W.otherOpen = false; W.i--; renderWiz(); };
+  $("#wzBack", el).onclick = () => { W.otherOpen = false; W.dir = -1; W.i--; renderWiz(); };
   $("#wzNext", el).onclick = () => { const v = W.data[fd.k], empty = v === "" || v == null || (Array.isArray(v) && v.length < (fd.min || 1));
-    if (empty && !fd.opt) { toast(T("required")); return; } W.otherOpen = false; W.i++; renderWiz(); };
+    if (empty && !fd.opt) { toast(T("required")); return; } W.otherOpen = false; W.dir = 1; W.i++; renderWiz(); };
 }
 function rowEditor(fd, idx) {
   const rows = W.data[fd.k] || (W.data[fd.k] = []), row = idx >= 0 ? clone(rows[idx]) : {};
@@ -1039,7 +1044,7 @@ function signOut() { ME = null; REAL = null; try { localStorage.removeItem("sb-m
 VIEWS.home = (me, mgr) => {
   const d = today(), tasks = tasksFor(d), mine = tasks.filter(t => t.who === ME), free = tasks.filter(t => !t.who && !t.done);
   const events = formsOn().filter(id => cfgForm(id).freq === "event" && (mgr || !FORMS[id].mgr));
-  let h = "";
+  let h = myDayCard(me);
   if (mgr) {
     const done = tasks.filter(t => t.done).length, late = tasks.filter(t => t.late).length;
     h += `<div class="sec"><h1>${T("today")}</h1><span>${DOW[parseD(d).getDay()]} ${fmtD(d)}</span></div>
@@ -1089,7 +1094,7 @@ function recDetail(id) {
   const canEdit = iAmMgr() || r.by === ME;
   const m = document.createElement("div"); m.className = "modal";
   m.innerHTML = `<div class="sheet"><div class="row"><h2 class="grow">${esc(L(f.title))}</h2><button class="pill" id="rdX">✕</button></div><p class="muted small">${fmtD(r.date)} · ${esc(nameId(r.by))} · ${new Date(r.at).toTimeString().slice(0, 5)}${r.done ? ` · ✓ ${esc(shortName(r.doneBy))} ${new Date(r.doneAt).toTimeString().slice(0, 5)}` : ""}</p>
-    <div class="scroll"><table class="t">${rows}</table></div><div class="row">${canEdit ? `<button class="btn alt grow" id="rdEdit">${T("edit")}</button>` : ""}${iAmMgr() ? `<button class="btn alt grow" id="rdPrint">${T("print")}</button><button class="btn bad" id="rdDel">${T("del")}</button>` : ""}</div></div>`;
+    <div class="scroll"><table class="t">${rows}</table></div><div class="row">${canEdit ? `<button class="btn alt grow" id="rdEdit">${T("edit")}</button>` : ""}${iAmMgr() ? `${f.noPrint ? "" : `<button class="btn alt grow" id="rdPrint">${T("print")}</button>`}<button class="btn bad" id="rdDel">${T("del")}</button>` : ""}</div></div>`;
   document.body.appendChild(m);
   $("#rdX", m).onclick = () => m.remove();
   const e = $("#rdEdit", m); if (e) e.onclick = () => { m.remove(); f.kind === "check" ? (startForm(r.form, { date: r.date }), W && (W.i = 0), renderWiz()) : startForm(r.form, { date: r.date, editId: id }); };
@@ -1130,7 +1135,7 @@ HOOKS.plan = app => {
 
 /* ---- print centre ---- */
 function rangeOf(k) { const t = today(); if (k === "yesterday") return [addDays(t, -1), addDays(t, -1)]; if (k === "week") return [weekStart(t), addDays(weekStart(t), 6)]; if (k === "month") return [t.slice(0, 8) + "01", ymd(new Date(+t.slice(0, 4), +t.slice(5, 7), 0))]; if (k === "lastmonth") { const e = addDays(t.slice(0, 8) + "01", -1); return [e.slice(0, 8) + "01", e]; } return [t, t]; }
-const PRINT_IDS = () => { const seen = new Set(), out = []; formsOn().forEach(id => { const k = FORMS[id].printAs || id; if (!seen.has(k)) { seen.add(k); out.push(id); } }); return out; };
+const PRINT_IDS = () => { const seen = new Set(), out = []; formsOn().filter(id => !FORMS[id].noPrint).forEach(id => { const k = FORMS[id].printAs || id; if (!seen.has(k)) { seen.add(k); out.push(id); } }); return out; };
 const printTitle = id => (FORMS[id].printAs === "openclose" ? (LANG === "ar" ? "قائمة الافتتاح والإغلاق" : "Opening & Closing Checklist") : L(FORMS[id].title));
 VIEWS.printing = () => {
   const k = R.rk || "today", [a, b] = R.rk === "custom" ? [R.from || today(), R.to || today()] : rangeOf(k);
@@ -1229,7 +1234,7 @@ HOOKS.review = app => {
 /* ---- more ---- */
 VIEWS.more = (me, mgr) => {
   const link = (v, label, sub) => `<button class="task" data-go="${v}"><span class="grow"><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</span>${ICON.chev}</button>`;
-  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota")}
+  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("budget", LANG === "ar" ? "الأهداف اليومية" : "Budget", LANG === "ar" ? "ارفع أهداف الشهر مسبقاً" : "Load the month's daily budget in advance") + link("requests", LANG === "ar" ? "طلب التزويد" : "Replenishment request", LANG === "ar" ? "ما طلبه العملاء ولم يتوفر" : "What customers asked for and we did not have") + link("zones", LANG === "ar" ? "مناطق الصالة" : "Floor zones", LANG === "ar" ? "توزيع الفريق يومياً" : "Who covers which zone, day by day") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota") + link("zones", LANG === "ar" ? "مناطق الصالة" : "Floor zones")}
     ${mgr && !REAL ? `<div class="card stack"><b>${T("viewAs")}</b><select class="in" id="mrAs"><option value="">—</option>${staffList().filter(s => s.id !== ME).map(s => `<option value="${esc(s.id)}">${esc(s.short || s.name)} · ${esc(L(ROLES[s.role]))}</option>`).join("")}</select></div>` : ""}
     <button class="btn alt" id="mrPin">${LANG === "ar" ? "تغيير الرقم السري" : "Change my PIN"}</button><button class="btn alt" id="mrOut">${T("signOut")}</button></div>`;
 };
@@ -1240,6 +1245,7 @@ HOOKS.more = app => {
 };
 
 /* ===================== weekly rota (Sunday to Saturday, AM / PM) ===================== */
+const ROTA_IMPORT_MSG = { text: "", bad: false };
 const ROTA_NEXT = { "": "AM", AM: "PM", PM: "OFF", OFF: "" };
 const rotaDoc = ws => S.rotas[ws] || { ws, cells: {} };
 const rotaCell = (doc, sid, i) => (doc.cells && doc.cells[sid] && doc.cells[sid][i]) || "";
@@ -1260,7 +1266,8 @@ VIEWS.rota = (me, mgr) => {
       <tr><th>${ar ? "عدد الصباحي" : "AM count"}</th>${day.map(d => `<td style="text-align:center"><b>${d.AM}</b></td>`).join("")}<td style="text-align:center"><b>${day.reduce((a, d) => a + d.AM, 0)}</b></td><td></td></tr>
       <tr><th>${ar ? "عدد المسائي" : "PM count"}</th>${day.map(d => `<td style="text-align:center"><b>${d.PM}</b></td>`).join("")}<td></td><td style="text-align:center"><b>${day.reduce((a, d) => a + d.PM, 0)}</b></td></tr>
       <tr><th>${ar ? "إجازة" : "Off"}</th>${day.map(d => `<td style="text-align:center">${d.OFF}</td>`).join("")}<td></td><td></td></tr></table></div>
-    ${mgr ? `<div class="card stack"><h3>${ar ? "أوقات الدوام (تُطبع على الجدول)" : "Shift times (printed on the rota)"}</h3><div class="row"><div class="field grow"><label for="rtAm">AM</label><input class="in" id="rtAm" placeholder="10:00 - 19:00" value="${esc(sh.am || "")}"></div><div class="field grow"><label for="rtPm">PM</label><input class="in" id="rtPm" placeholder="14:00 - 23:00" value="${esc(sh.pm || "")}"></div></div></div>
+    ${mgr ? `<div class="card stack"><h3>${ar ? "أوقات الدوام (تُطبع على الجدول)" : "Shift times (printed on the rota)"}</h3><div class="row"><div class="field grow"><label for="rtAm">AM</label><input class="in num" id="rtAm" value="${esc(shifts().am)}"></div><div class="field grow"><label for="rtPm">PM</label><input class="in num" id="rtPm" value="${esc(shifts().pm)}"></div></div><div class="row"><div class="field grow"><label for="rtFriAm">${ar ? "الجمعة AM" : "Friday AM"}</label><input class="in num" id="rtFriAm" value="${esc(shifts().friAm)}"></div><div class="field grow"><label for="rtFriPm">${ar ? "الجمعة PM" : "Friday PM"}</label><input class="in num" id="rtFriPm" value="${esc(shifts().friPm)}"></div></div></div>
+    <div class="card stack"><h3>${ar ? "رفع جدول الإكسل" : "Upload the Excel rota"}</h3><p class="small muted">${ar ? "ارفع نموذج الجدول الأسبوعي. يقرأ التطبيق الأسبوع والأرقام الوظيفية والورديات." : "Upload the Weekly Rota form. The app reads the week, the employee numbers and the shifts."}</p>${fileBtn("rtFile", ar ? "اختيار الملف" : "Choose the file")}<p class="small" id="rtMsg" style="color:var(--${ROTA_IMPORT_MSG.bad ? "bad" : "ok"})">${esc(ROTA_IMPORT_MSG.text)}</p></div>
     <div class="row"><button class="btn alt grow" id="rtCopy">${ar ? "نسخ الأسبوع السابق" : "Copy last week"}</button><button class="btn alt" id="rtClear">${ar ? "مسح" : "Clear"}</button></div>` : ""}
     <button class="btn" id="rtPdf">${ar ? "عرض وحفظ PDF" : "View and save as PDF"}</button>`;
 };
@@ -1271,7 +1278,12 @@ HOOKS.rota = app => {
   app.querySelectorAll("[data-rc]").forEach(b => b.onclick = () => { const [sid, i] = b.dataset.rc.split(":"); save(d => { d.cells[sid] = Object.assign({}, d.cells[sid]); d.cells[sid][i] = ROTA_NEXT[rotaCell(d, sid, i)]; }); });
   const cp = $("#rtCopy", app); if (cp) cp.onclick = () => { const prev = S.rotas[addDays(ws, -7)]; if (!prev) return toast(LANG === "ar" ? "لا يوجد جدول للأسبوع السابق" : "There is no rota for last week"); save(d => { d.cells = clone(prev.cells || {}); }); toast(T("saved")); };
   const cl = $("#rtClear", app); if (cl) cl.onclick = () => ask(LANG === "ar" ? "مسح هذا الأسبوع؟" : "Clear this week?", "", LANG === "ar" ? "مسح" : "Clear", () => save(d => { d.cells = {}; }), true);
-  ["Am", "Pm"].forEach(k => { const e = $("#rt" + k, app); if (e) e.onchange = () => Data.saveCfg({ shifts: { [k.toLowerCase()]: e.value.trim() } }); });
+  ["Am", "Pm", "FriAm", "FriPm"].forEach(k => { const e = $("#rt" + k, app); if (e) e.onchange = () => Data.saveCfg({ shiftsV: 2, shifts: Object.assign({}, shifts(), { [k[0].toLowerCase() + k.slice(1)]: e.value.trim() }) }); });
+  const rf = $("#rtFile", app); if (rf) rf.onchange = async e => { const f = e.target.files[0]; if (!f) return;
+    try { const r = parseRota(await readSheetRows(f), ws); if (!r.people) throw new Error("No team members from this store were found in the file."); Data.saveDoc("rota", r.ws, { ws: r.ws, cells: r.cells, by: ME, at: Date.now() }); R.ws = r.ws;
+      ROTA_IMPORT_MSG.bad = false; ROTA_IMPORT_MSG.text = `Loaded week ${fmtD(r.ws)}: ${r.people} people, ${r.filled} shifts.` + (r.unknown.length ? ` Not in the team list, skipped: ${r.unknown.join(", ")}.` : ""); }
+    catch (er) { ROTA_IMPORT_MSG.bad = true; ROTA_IMPORT_MSG.text = er.message || String(er); }
+    render(); };
   $("#rtPdf", app).onclick = () => showPages(rotaPages(ws), "rota_" + ws);
 };
 function rotaPages(ws) {
@@ -1286,7 +1298,7 @@ function rotaPages(ws) {
       tx(c, "WEEKLY ROTA", 28, 30, 420, 58, { align: "l", max: 20, bold: 1 });
       if (im.logo) c.drawImage(im.logo, right - 34, 26, 34, 34);
       tx(c, "Store name and location code:  " + storeLine(), 28, 66, 470, 82, { align: "l", max: 9.5 }); tx(c, `Week:  Sunday ${fmtD(ws)}  to  Saturday ${fmtD(addDays(ws, 6))}`, 470, 66, right, 82, { align: "r", max: 9.5 });
-      tx(c, `AM${sh.am ? " = " + sh.am : ""}   |   PM${sh.pm ? " = " + sh.pm : ""}   |   OFF = day off`, 28, 86, right, 100, { align: "l", max: 8.5 });
+      tx(c, shiftLegend(), 28, 86, right, 100, { align: "l", max: 8.5 });
       fill(28, top, right, top + hh, "#6e6e6e");
       const head = (s, x0, x1) => { c.save(); tx(c, s, x0, top, x1, top + hh, { max: 8.5, bold: 1, wrap: 1 }); c.restore(); };
       const white = fn => { const o = c.fillStyle; fn(); };
@@ -1313,6 +1325,175 @@ function rotaPages(ws) {
     } });
   }
   return pages;
+}
+
+/* ===================== shifts ===================== */
+const SHIFT_DEF = { am: "09:00 - 17:00", pm: "15:00 - 23:00", friAm: "14:00 - 22:00", friPm: "16:00 - 00:00" };
+const shifts = () => { const s = Object.assign({}, SHIFT_DEF), c = (S.cfg && S.cfg.shiftsV === 2 && S.cfg.shifts) || {}; Object.keys(SHIFT_DEF).forEach(k => { if (c[k]) s[k] = c[k]; }); return s; };
+const shiftTime = (date, v) => { if (v !== "AM" && v !== "PM") return ""; const fri = parseD(date).getDay() === 5, s = shifts(); return v === "AM" ? (fri ? s.friAm : s.am) : (fri ? s.friPm : s.pm); };
+const shiftLegend = () => { const s = shifts(); return `AM = ${s.am}   |   PM = ${s.pm}   |   Friday: AM = ${s.friAm}, PM = ${s.friPm}   |   OFF = day off`; };
+
+/* ===================== reading Excel files ===================== */
+let xlsxLoading = null;
+function loadXlsx() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!xlsxLoading) xlsxLoading = new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = () => res(window.XLSX); s.onerror = () => { xlsxLoading = null; rej(new Error("Could not load the Excel reader. Check the internet connection.")); }; document.head.appendChild(s); });
+  return xlsxLoading;
+}
+async function readSheetRows(file) { const X = await loadXlsx(), wb = X.read(await file.arrayBuffer(), { type: "array" }), ws = wb.Sheets[wb.SheetNames[0]]; return X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" }); }
+const serialToYmd = n => { const d = new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86400000); return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`; };
+function anyToYmd(v) {
+  if (typeof v === "number" && v > 30000 && v < 80000) return serialToYmd(v);
+  const s = String(v || "").trim(); let m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+  if ((m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/))) return `${m[3]}-${pad2(m[2])}-${pad2(m[1])}`;
+  return null;
+}
+const fileBtn = (id, label) => `<label class="btn alt" style="display:flex;align-items:center;justify-content:center;cursor:pointer">${label}<input type="file" id="${id}" accept=".xlsx,.xls,.csv" style="position:absolute;width:1px;height:1px;opacity:0"></label>`;
+
+/* ---- rota from the Weekly Rota Excel form ---- */
+function parseRota(rows, fallbackWs) {
+  const h = rows.findIndex(r => r.some(c => /employee\s*no/i.test(String(c)))); if (h < 0) throw new Error("This does not look like the Weekly Rota form: the Employee No. column was not found.");
+  const head = rows[h].map(c => String(c).trim()), emp = head.findIndex(c => /employee\s*no/i.test(c)), days = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"].map(d => head.findIndex(c => c.toLowerCase().startsWith(d)));
+  if (days.some(d => d < 0)) throw new Error("The Sun to Sat columns were not found.");
+  let ws = null; for (let i = 0; i < h && !ws; i++) { const k = rows[i].findIndex(c => /week start/i.test(String(c))); if (k >= 0) for (let j = k + 1; j < rows[i].length && !ws; j++) ws = anyToYmd(rows[i][j]); }
+  ws = weekStart(ws || fallbackWs);
+  const cells = {}, unknown = []; let filled = 0;
+  for (let i = h + 1; i < rows.length; i++) { const id = String(rows[i][emp] ?? "").trim().replace(/\.0$/, ""); if (!id || !/^[A-Za-z0-9_-]+$/.test(id) || /count|off/i.test(id)) continue; if (!staff(id)) { unknown.push(id); continue; }
+    cells[id] = {}; days.forEach((col, d) => { const v = String(rows[i][col] ?? "").trim().toUpperCase(); if (v === "AM" || v === "PM" || v === "OFF") { cells[id][d] = v; filled++; } }); }
+  return { ws, cells, unknown, people: Object.keys(cells).length, filled };
+}
+/* ---- budget, day by day ---- */
+const budgetOf = date => { const b = S.budgets[ymOf(date)], v = b && b.days && b.days[date.slice(8)]; const n = num(v); return n === null ? null : n; };
+const monthBudget = ym => { const b = S.budgets[ym]; return b && b.days ? Object.values(b.days).reduce((a, v) => a + (num(v) || 0), 0) : 0; };
+const salesOn = date => staffList().filter(s => (s.role === "ss" || s.role === "sa") && !isOff(date, s.id));
+const shareOf = date => { const b = budgetOf(date), n = salesOn(date).length; return b !== null && n && (!S.cfg || S.cfg.budgetSplit !== false) ? Math.round(b / n) : null; };
+function parseBudgetRows(rows, ym) {          // rows of [date, ..., amount]  or a plain column of amounts
+  const out = {}; let n = 0;
+  const plain = rows.map(r => r.filter(c => c !== "" && c != null)).filter(r => r.length);
+  if (plain.length >= 28 && plain.length <= 31 && plain.every(r => r.length === 1 && num(r[0]) !== null && !anyToYmd(r[0]))) { plain.forEach((r, i) => { out[`${ym}-${pad2(i + 1)}`] = num(r[0]); n++; }); return { days: out, n }; }
+  rows.forEach(r => { const di = r.findIndex(c => anyToYmd(c)); if (di < 0) return; const d = anyToYmd(r[di]); let amt = null; for (let j = r.length - 1; j > di; j--) { const v = num(r[j]); if (v !== null && typeof r[j] !== "string" || (typeof r[j] === "string" && /^[\d,.\s]+$/.test(r[j]) && v !== null)) { amt = v; break; } } if (amt !== null) { out[d] = amt; n++; } });
+  return { days: out, n };
+}
+function saveBudgetDays(days) { const byM = {}; Object.entries(days).forEach(([d, v]) => { (byM[ymOf(d)] = byM[ymOf(d)] || {})[d.slice(8)] = v; }); Object.entries(byM).forEach(([ym, dd]) => { const doc = clone(S.budgets[ym] || { ym, days: {} }); doc.ym = ym; doc.days = Object.assign({}, doc.days, dd); doc.by = ME; doc.at = Date.now(); Data.saveDoc("budget", ym, doc); }); }
+VIEWS.budget = () => {
+  const ym = R.ym || ymOf(today()), ar = LANG === "ar", last = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(), b = (S.budgets[ym] && S.budgets[ym].days) || {}, tot = monthBudget(ym), set = Object.values(b).filter(v => num(v) !== null).length;
+  return `<div class="sec"><h1>${ar ? "الأهداف اليومية" : "Budget"}</h1></div>
+    <div class="row"><button class="btn sm alt" id="bgPrev">←</button><b class="grow" style="text-align:center">${monthLabel(ym)}</b><button class="btn sm alt" id="bgNext">→</button></div>
+    <div class="kpis"><div class="kpi" style="grid-column:span 2"><b class="num">${money(tot)}</b><span>${ar ? "هدف الشهر (ريال)" : "month budget (SAR)"}</span></div><div class="kpi"><b class="num">${set}/${last}</b><span>${ar ? "أيام محددة" : "days set"}</span></div></div>
+    <div class="card stack"><h3>${ar ? "رفع الأهداف مسبقاً" : "Load the budget in advance"}</h3><p class="small muted">${ar ? "ارفع نموذج الإكسل، أو الصق عمود المبالغ (يوم لكل سطر) أو عمودين: التاريخ والمبلغ." : "Upload the Excel form, or paste either one amount per line for every day of this month, or two columns: date and amount."}</p>
+      ${fileBtn("bgFile", ar ? "رفع ملف الإكسل" : "Upload the Excel form")}<textarea class="in" id="bgPaste" rows="4" placeholder="01.12.2026	52000"></textarea><button class="btn soft" id="bgPasteGo">${ar ? "استخدام ما تم لصقه" : "Use what I pasted"}</button><p class="small" id="bgMsg"></p></div>
+    <label class="row card" style="gap:10px"><input type="checkbox" id="bgSplit" ${!S.cfg || S.cfg.budgetSplit !== false ? "checked" : ""} style="width:22px;height:22px"><span class="grow">${ar ? "تقسيم هدف اليوم بالتساوي على البائعين العاملين" : "Split the day's budget equally between the sales staff working that day"}<div class="small muted">${ar ? "يظهر لكل بائع نصيبه في صفحته وفي الاجتماع اليومي." : "Each sales person sees their share on their page and in the Daily Huddle."}</div></span></label>
+    <div class="list">${Array.from({ length: last }, (_, i) => { const d = `${ym}-${pad2(i + 1)}`, dw = parseD(d).getDay(); return `<div class="row"><span class="num" style="width:92px"><b>${pad2(i + 1)}</b> <span class="muted small">${(ar ? DOW_AR : DOW)[dw]}</span></span><input class="in num grow" inputmode="decimal" data-bd="${pad2(i + 1)}" value="${esc(b[pad2(i + 1)] ?? "")}" aria-label="${fmtD(d)}">${d === today() ? `<span class="chip acc">${T("today")}</span>` : ""}</div>`; }).join("")}</div>`;
+};
+HOOKS.budget = app => {
+  const ym = R.ym || ymOf(today()), msg = (t, bad) => { const m = $("#bgMsg", app); if (m) { m.textContent = t; m.style.color = bad ? "var(--bad)" : "var(--ok)"; } };
+  const shift = n => { const d = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1); R.ym = ymOf(ymd(d)); render(); };
+  $("#bgPrev", app).onclick = () => shift(-1); $("#bgNext", app).onclick = () => shift(1);
+  app.querySelectorAll("[data-bd]").forEach(i => i.onchange = () => saveBudgetDays({ [`${ym}-${i.dataset.bd}`]: i.value.trim() === "" ? "" : (num(i.value) ?? "") }));
+  $("#bgSplit", app).onchange = e => Data.saveCfg({ budgetSplit: e.target.checked });
+  const take = rows => { const r = parseBudgetRows(rows, ym); if (!r.n) return msg(LANG === "ar" ? "لم أجد أي مبالغ." : "No dates with amounts were found.", true); saveBudgetDays(r.days); const first = Object.keys(r.days).sort()[0]; R.ym = ymOf(first); toast(`${r.n} ${LANG === "ar" ? "يوماً تم تحميلها" : "days loaded"}`); render(); };
+  $("#bgFile", app).onchange = async e => { const f = e.target.files[0]; if (!f) return; msg("…"); try { take(await readSheetRows(f)); } catch (er) { msg(er.message || String(er), true); } };
+  $("#bgPasteGo", app).onclick = () => take($("#bgPaste", app).value.split("\n").map(l => l.trim()).filter(Boolean).map(l => l.includes("\t") ? l.split("\t") : l.split(/\s{2,}|;|\s(?=\d[\d,.]*$)/)).map(r => r.map(c => c.trim())));
+};
+
+/* ===================== customer requests and the replenishment list ===================== */
+FORMS.request = { id: "request", letter: "REQ", kind: "log", noPrint: true, title: q("Customer Request We Could Not Fill", "طلب عميل لم نستطع تلبيته"), sched: { freq: "event" }, fields: [
+  { k: "type", t: "choice", q: q("What was the problem?", "ما المشكلة؟"), opts: [o("size", "We have the product, but not the size", "المنتج موجود لكن المقاس غير متوفر"), o("none", "We do not have this product at all", "المنتج غير موجود لدينا إطلاقاً")] },
+  { k: "model", t: "text", q: q("Which product or model?", "أي منتج أو موديل؟"), sug: 1 }, { k: "color", t: "text", q: q("Colour", "اللون"), opt: 1, sug: 1 },
+  { k: "size", t: "text", q: q("Which size was missing?", "ما المقاس الناقص؟"), showIf: d => d.type === "size" },
+  { k: "who", t: "choice", q: q("Who is it for?", "لمن؟"), opts: [o("Men", "Men", "رجال"), o("Women", "Women", "نساء"), o("Kids", "Kids", "أطفال")], opt: 1 },
+  { k: "qty", t: "num", q: q("How many?", "كم العدد؟"), def: "1" }, { k: "note", t: "text", q: q("Anything else to add?", "أي إضافة؟"), opt: 1 }] };
+FORM_ORDER.push("request");
+function reqGroups(showSent) {
+  const recs = recsOf("request").filter(r => showSent || !r.sent), agg = type => { const m = new Map();
+    recs.filter(r => r.data.type === type).forEach(r => { const d = r.data, key = [d.model, d.color, type === "size" ? d.size : "", d.who].map(x => String(x || "").trim().toLowerCase()).join("|"); const g = m.get(key) || { model: d.model, color: d.color || "", size: d.size || "", who: d.who || "", qty: 0, n: 0, last: r.date, notes: [] }; g.qty += num(d.qty) || 1; g.n++; if (r.date > g.last) g.last = r.date; if (d.note) g.notes.push(d.note); m.set(key, g); });
+    return [...m.values()].sort((a, b) => b.qty - a.qty || String(a.model).localeCompare(String(b.model))); };
+  const dates = recs.map(r => r.date).sort();
+  return { recs, size: agg("size"), none: agg("none"), from: dates[0], to: dates[dates.length - 1] };
+}
+function reqText(g) {
+  const L1 = [`Replenishment request - ${storeLine()}`, g.from ? `Customer requests from ${fmtD(g.from)} to ${fmtD(g.to)}` : "", "", "1) SIZES MISSING (product is in our range)"];
+  g.size.forEach(x => L1.push(`- ${x.model}${x.color ? ", " + x.color : ""}${x.who ? ", " + x.who : ""}: size ${x.size} x ${x.qty} (${x.n} request${x.n > 1 ? "s" : ""})`)); if (!g.size.length) L1.push("- none");
+  L1.push("", "2) PRODUCTS WE DO NOT HAVE (missed opportunities)"); g.none.forEach(x => L1.push(`- ${x.model}${x.color ? ", " + x.color : ""}${x.who ? ", " + x.who : ""} x ${x.qty} (${x.n} request${x.n > 1 ? "s" : ""})${x.notes.length ? " - " + x.notes.join("; ") : ""}`)); if (!g.none.length) L1.push("- none");
+  return L1.filter((x, i) => x !== "" || i > 1).join("\n");
+}
+VIEWS.requests = () => {
+  const ar = LANG === "ar", g = reqGroups(R.sent), row = (x, sz) => `<tr><td><b>${esc(x.model)}</b><div class="small muted">${esc([x.color, x.who].filter(Boolean).join(" · "))}</div></td>${sz ? `<td class="num"><b>${esc(x.size)}</b></td>` : ""}<td class="num" style="text-align:center"><b>${x.qty}</b></td><td class="num small muted" style="text-align:center">${x.n}</td></tr>`;
+  return `<div class="sec"><h1>${ar ? "طلب التزويد" : "Replenishment request"}</h1></div><p class="muted">${ar ? "كل ما طلبه العملاء ولم يتوفر، مجمّع لك لإرساله لمراقب المخزون." : "Everything customers asked for that we could not give them, added up and ready to send to stock control."}</p>
+    <div class="kpis"><div class="kpi"><b class="num">${g.recs.length}</b><span>${ar ? "طلبات" : "requests"}</span></div><div class="kpi"><b class="num">${g.size.length}</b><span>${ar ? "مقاسات ناقصة" : "missing sizes"}</span></div><div class="kpi"><b class="num">${g.none.length}</b><span>${ar ? "منتجات غير موجودة" : "products we lack"}</span></div></div>
+    <button class="btn soft" data-form="request">+ ${ar ? "تسجيل طلب عميل" : "Log a customer request"}</button>
+    <div class="card stack"><h3>1. ${ar ? "المقاس غير متوفر" : "We have it, the size is missing"}</h3><div class="scroll"><table class="t"><tr><th>${ar ? "المنتج" : "Product"}</th><th>${ar ? "المقاس" : "Size"}</th><th style="text-align:center">${ar ? "العدد" : "Qty"}</th><th style="text-align:center">${ar ? "طلبات" : "Asked"}</th></tr>${g.size.map(x => row(x, 1)).join("") || `<tr><td colspan="4" class="muted">${T("nothingYet")}</td></tr>`}</table></div></div>
+    <div class="card stack"><h3>2. ${ar ? "غير موجود لدينا إطلاقاً" : "We do not have it at all"}</h3><div class="scroll"><table class="t"><tr><th>${ar ? "المنتج" : "Product"}</th><th style="text-align:center">${ar ? "العدد" : "Qty"}</th><th style="text-align:center">${ar ? "طلبات" : "Asked"}</th></tr>${g.none.map(x => row(x, 0)).join("") || `<tr><td colspan="3" class="muted">${T("nothingYet")}</td></tr>`}</table></div></div>
+    <div class="field"><label for="rqMail">${ar ? "بريد مراقب المخزون" : "Stock controller's e-mail"}</label><input class="in" id="rqMail" type="email" value="${esc((S.cfg && S.cfg.stockEmail) || "")}" placeholder="name@company.com"></div>
+    <div class="row"><button class="btn grow" id="rqPdf" ${g.recs.length ? "" : "disabled"}>${ar ? "PDF للطباعة" : "PDF to print"}</button><a class="btn alt grow" id="rqSend" style="text-align:center;text-decoration:none" href="#">${ar ? "فتح بريد جاهز" : "Open a ready e-mail"}</a></div>
+    <div class="row"><button class="btn alt grow" id="rqCopy">${ar ? "نسخ النص" : "Copy as text"}</button><button class="btn alt grow" id="rqDone" ${g.recs.some(r => !r.sent) ? "" : "disabled"}>${ar ? "تم الإرسال، ابدأ قائمة جديدة" : "Sent. Start a new list"}</button></div>
+    <label class="row small"><input type="checkbox" id="rqSent" ${R.sent ? "checked" : ""} style="width:20px;height:20px"> ${ar ? "إظهار الطلبات المرسلة سابقاً أيضاً" : "Also show requests already sent"}</label>`;
+};
+HOOKS.requests = app => {
+  const g = reqGroups(R.sent), text = reqText(g), mail = $("#rqMail", app);
+  const href = () => `mailto:${encodeURIComponent(mail.value.trim())}?subject=${encodeURIComponent("Replenishment request - " + storeLine())}&body=${encodeURIComponent(text)}`;
+  $("#rqSend", app).href = href(); mail.onchange = () => { Data.saveCfg({ stockEmail: mail.value.trim() }); };  mail.oninput = () => { $("#rqSend", app).href = href(); };
+  $("#rqSent", app).onchange = e => { R.sent = e.target.checked; render(); };
+  $("#rqCopy", app).onclick = async () => { try { await navigator.clipboard.writeText(text); toast(LANG === "ar" ? "تم النسخ" : "Copied"); } catch (e) { toast(LANG === "ar" ? "تعذّر النسخ" : "Could not copy"); } };
+  $("#rqPdf", app).onclick = () => showPages(reqPages(g), "replenishment_" + today());
+  $("#rqDone", app).onclick = () => ask(LANG === "ar" ? "بدء قائمة جديدة؟" : "Start a new list?", LANG === "ar" ? "تُحفظ الطلبات الحالية كمرسلة ولا تظهر في القائمة التالية." : "The current requests are kept as sent and will not appear on the next list.", LANG === "ar" ? "نعم" : "Yes", () => { g.recs.filter(r => !r.sent).forEach(r => { const { id, ...rest } = r; Data.saveRec(id, Object.assign(rest, { sent: true, sentAt: Date.now(), sentBy: ME })); }); toast(T("saved")); });
+};
+function reqPages(g) {
+  const lines = []; lines.push({ h: "1. Sizes missing (the product is in our range)" }, { head: ["Product / model", "Colour", "For", "Size", "Qty", "Requests", "Last asked"] });
+  g.size.forEach(x => lines.push({ r: [x.model, x.color, x.who, x.size, x.qty, x.n, fmtD(x.last)] })); if (!g.size.length) lines.push({ r: ["None", "", "", "", "", "", ""] });
+  lines.push({ gap: 1 }, { h: "2. Products we do not have (missed opportunities)" }, { head: ["Product / model", "Colour", "For", "Notes", "Qty", "Requests", "Last asked"] });
+  g.none.forEach(x => lines.push({ r: [x.model, x.color, x.who, x.notes.join("; "), x.qty, x.n, fmtD(x.last)] })); if (!g.none.length) lines.push({ r: ["None", "", "", "", "", "", ""] });
+  const per = 22, pages = [], X = [28, 250, 350, 410, 610, 660, 730, 812];
+  for (let p = 0; p < Math.max(1, Math.ceil(lines.length / per)); p++) { const chunk = lines.slice(p * per, (p + 1) * per), lastPg = (p + 1) * per >= lines.length;
+    pages.push({ bg: null, land: true, imgs: ["logo"], draw(c, im) {
+      tx(c, "REPLENISHMENT REQUEST", 28, 30, 500, 58, { align: "l", max: 20, bold: 1 }); if (im.logo) c.drawImage(im.logo, 778, 26, 34, 34);
+      tx(c, "Store name and location code: " + storeLine(), 28, 66, 470, 82, { align: "l", max: 9.5 }); tx(c, g.from ? `Customer requests from ${fmtD(g.from)} to ${fmtD(g.to)}` : "", 430, 66, 812, 82, { align: "r", max: 9.5 });
+      tx(c, `Prepared on ${fmtD(today())} by ${nameId(ME)}`, 28, 84, 812, 98, { align: "l", max: 8.5 });
+      let y = 110; const rh = 19;
+      chunk.forEach(l => { if (l.gap) { y += 10; return; } if (l.h) { tx(c, l.h, 28, y, 812, y + rh, { align: "l", max: 10, bold: 1 }); y += rh; return; }
+        if (l.head) { c.fillStyle = "#6e6e6e"; c.fillRect(28, y, 784, rh); l.head.forEach((t, i) => { c.font = `bold 8.5px ${PFONT}`; c.fillStyle = "#fff"; c.textBaseline = "middle"; c.textAlign = i < 4 ? "left" : "center"; c.fillText(t, i < 4 ? X[i] + 4 : (X[i] + X[i + 1]) / 2, y + rh / 2); }); }
+        else l.r.forEach((t, i) => tx(c, t, X[i], y, X[i + 1], y + rh, { align: i < 4 ? "l" : "c", max: 8.5, bold: i === 0 || i === 4, wrap: i === 3 }));
+        c.strokeStyle = "#111"; c.lineWidth = 0.6; c.strokeRect(28, y, 784, rh); X.slice(1, -1).forEach(x => { c.beginPath(); c.moveTo(x, y); c.lineTo(x, y + rh); c.stroke(); }); y += rh; });
+      if (lastPg) { const fy = Math.min(y + 30, 556); tx(c, "Store Manager (name and signature):", 28, fy, 200, fy + 14, { align: "l", max: 8.5 }); c.beginPath(); c.moveTo(200, fy + 13); c.lineTo(430, fy + 13); c.stroke(); tx(c, "Received by stock control:", 460, fy, 590, fy + 14, { align: "l", max: 8.5 }); c.beginPath(); c.moveTo(590, fy + 13); c.lineTo(812, fy + 13); c.stroke(); }
+    } }); }
+  return pages;
+}
+
+/* ===================== floor zones, set day by day ===================== */
+const zoneList = all => Object.entries((S.cfg && S.cfg.zones) || {}).map(([id, z]) => ({ id, ...z })).filter(z => all || z.active !== false).sort((a, b) => (a.ord || 0) - (b.ord || 0));
+const zonesOf = (date, sid) => { const pz = planOf(date).zones || {}; return zoneList().flatMap(z => ["AM", "PM"].filter(s => pz[z.id] && pz[z.id][s] === sid).map(s => ({ z, s }))); };
+const canZone = date => iAmMgr() || planOf(date).zoneBy === ME;
+VIEWS.zones = (me, mgr) => {
+  const d = R.date || today(), ar = LANG === "ar", p = planOf(d), pz = p.zones || {}, zl = zoneList(), can = canZone(d), days = Array.from({ length: 8 }, (_, i) => addDays(today(), i));
+  const pick = (z, s) => { const cur = (pz[z.id] && pz[z.id][s]) || "", pool = staffList().filter(x => !isOff(d, x.id) && (!shiftOf(d, x.id) || shiftOf(d, x.id) === s || x.id === cur));
+    return `<div class="field grow"><label>${s} <span class="num">${esc(shiftTime(d, s))}</span></label><select class="in" data-zs="${esc(z.id)}:${s}" ${can ? "" : "disabled"}><option value="">${T("nobody")}</option>${pool.map(x => `<option value="${esc(x.id)}" ${cur === x.id ? "selected" : ""}>${esc(x.short || x.name)}</option>`).join("")}</select></div>`; };
+  return `<div class="sec"><h1>${ar ? "مناطق الصالة" : "Floor zones"}</h1><span>${(ar ? DOW_AR : DOW)[parseD(d).getDay()]} ${fmtD(d)}</span></div>
+    <div class="days">${days.map(x => `<button data-day="${x}" class="${x === d ? "on" : ""}"><span>${x === today() ? T("today") : (ar ? DOW_AR : DOW)[parseD(x).getDay()]}</span><b class="num">${+x.slice(8)}</b><span>${MON[+x.slice(5, 7) - 1].slice(0, 3)}</span></button>`).join("")}</div>
+    ${mgr ? `<div class="card stack"><h3>${ar ? "من يوزّع المناطق هذا اليوم؟" : "Who sets the zones on this day?"}</h3><select class="in" id="znBy"><option value="">${ar ? "أنا / المدير" : "The managers only"}</option>${staffList().filter(x => !isMgrRole(x.role) && !isOff(d, x.id)).map(x => `<option value="${esc(x.id)}" ${p.zoneBy === x.id ? "selected" : ""}>${esc(x.short || x.name)}</option>`).join("")}</select><p class="small muted">${ar ? "الشخص المختار يستطيع توزيع الفريق على المناطق لهذا اليوم فقط." : "The person you choose can place the team in zones for this day only."}</p></div>` : (can ? `<div class="banner" style="background:var(--accent-soft);color:var(--accent);border-color:var(--accent)">${ar ? "أنت مسؤول عن توزيع المناطق اليوم." : "You are setting the zones for this day."}</div>` : "")}
+    ${zl.length ? `<div class="stack">${zl.map(z => `<div class="card stack"><b>${esc(z.name)}</b><div class="row" style="align-items:flex-end">${pick(z, "AM")}${pick(z, "PM")}</div></div>`).join("")}</div>${can ? `<button class="btn alt" id="znCopy">${ar ? "نسخ من اليوم السابق" : "Copy the day before"}</button>` : ""}` : `<div class="card muted">${ar ? "لم تُحدد مناطق بعد." : "No zones have been created yet."}</div>`}
+    ${mgr ? `<div class="card stack"><h3>${ar ? "المناطق" : "The zones"}</h3>${zoneList(true).map(z => `<div class="row"><input class="in grow" data-zn="${esc(z.id)}" value="${esc(z.name)}" aria-label="Zone name"><label class="row small" style="gap:6px"><input type="checkbox" data-za="${esc(z.id)}" ${z.active !== false ? "checked" : ""} style="width:20px;height:20px">${ar ? "مستخدمة" : "In use"}</label></div>`).join("")}<div class="row"><input class="in grow" id="znNew" placeholder="${ar ? "اسم منطقة جديدة" : "New zone name, for example Running wall"}"><button class="btn sm" id="znAdd">${T("add")}</button></div></div>` : ""}`;
+};
+HOOKS.zones = app => {
+  const d = R.date || today(), edit = fn => { const p = clone(planOf(d)); fn(p); Data.savePlan(d, p); };
+  app.querySelectorAll("[data-day]").forEach(b => b.onclick = () => { R.date = b.dataset.day; render(); });
+  app.querySelectorAll("[data-zs]").forEach(s => s.onchange = () => { const [z, sh] = s.dataset.zs.split(":"); edit(p => { p.zones = p.zones || {}; p.zones[z] = Object.assign({}, p.zones[z], { [sh]: s.value }); }); });
+  const by = $("#znBy", app); if (by) by.onchange = () => edit(p => { p.zoneBy = by.value; });
+  const cp = $("#znCopy", app); if (cp) cp.onclick = () => { const prev = planOf(addDays(d, -1)); edit(p => { p.zones = clone(prev.zones || {}); }); toast(T("saved")); };
+  app.querySelectorAll("[data-zn]").forEach(i => i.onchange = () => { if (i.value.trim()) Data.saveCfg({ zones: { [i.dataset.zn]: { name: i.value.trim() } } }); });
+  app.querySelectorAll("[data-za]").forEach(i => i.onchange = () => Data.saveCfg({ zones: { [i.dataset.za]: { active: i.checked } } }));
+  const add = $("#znAdd", app); if (add) add.onclick = () => { const n = $("#znNew", app).value.trim(); if (!n) return; Data.saveCfg({ zones: { ["z" + rid()]: { name: n, ord: Date.now(), active: true } } }); };
+};
+/* what each person sees at the top of their home page */
+function myDayCard(me) {
+  const d = today(), ar = LANG === "ar", sh = shiftOf(d, ME), b = budgetOf(d), share = (me.role === "ss" || me.role === "sa") && !isOff(d, ME) ? shareOf(d) : null, zs = zonesOf(d, ME), bits = [];
+  if (b !== null) bits.push(`<div class="kpi"><b class="num">${money(b)}</b><span>${ar ? "هدف المتجر اليوم (ريال)" : "store target today (SAR)"}</span></div>`);
+  if (share !== null) bits.push(`<div class="kpi"><b class="num">${money(share)}</b><span>${ar ? "نصيبك اليوم (ريال)" : "your share today (SAR)"}</span></div>`);
+  if (sh) bits.push(`<div class="kpi"><b>${sh}</b><span class="num">${sh === "OFF" ? (ar ? "إجازة" : "day off") : esc(shiftTime(d, sh))}</span></div>`);
+  let h = bits.length ? `<div class="kpis" style="grid-template-columns:repeat(${bits.length},1fr)">${bits.join("")}</div>` : "";
+  if (zs.length) h += `<div class="card row"><span class="chip acc">${ar ? "منطقتك" : "Your zone"}</span><b class="grow">${zs.map(x => `${esc(x.z.name)} <span class="muted small">(${x.s})</span>`).join(" · ")}</b></div>`;
+  if (!iAmMgr() && planOf(d).zoneBy === ME) h += `<button class="task due" data-go="zones"><span class="grow"><b>${ar ? "وزّع الفريق على المناطق اليوم" : "Place the team in zones today"}</b><small>${ar ? "كلّفك المدير بذلك" : "The manager asked you to do this"}</small></span>${ICON.chev}</button>`;
+  return h;
 }
 
 /* ===================== settings ===================== */
