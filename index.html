@@ -831,7 +831,7 @@ function defVal(f, fd, data) {
   if (fd.remember) { try { return localStorage.getItem(rememberKey(f.id, fd.k)) || ""; } catch (e) { return ""; } }
   if (fd.t === "rows") {
     if (fd.seed === "duty") return staffList().filter(s => !isOff(W.date, s.id)).slice(0, fd.max).map(s => ({ who: s.id, timing: shiftTime(W.date, shiftOf(W.date, s.id)), ttarget: (s.role === "ss" || s.role === "sa") && shareOf(W.date) !== null ? String(shareOf(W.date)) : "" }));
-    if (fd.seed === "sold") { const src = salesItemsBefore(W.date); return src ? src.items.slice(0, fd.max).map(it => ({ style: it.c, desc: "", size: it.z, sys: "", phy: "", remark: "" })) : []; }
+    if (fd.seed === "sold") { const src = salesItemsBefore(W.date); return src ? src.items.slice(0, fd.max).map(it => ({ style: it.c, desc: it.n || "", size: it.z, sys: it.sys != null ? String(it.sys) : "", phy: "", remark: "" })) : []; }
     if (fd.seed === "variance") { const sc = S.recs.get("stockcheck_" + W.date); if (!sc) return [];
       return (sc.data.items || []).map(it => { const fin = it.recount !== "" && it.recount != null ? it.recount : it.phy; return { it, fin }; }).filter(x => num(x.fin) !== null && num(x.it.sys) !== null && num(x.fin) !== num(x.it.sys))
         .map(x => ({ ref: [x.it.style, x.it.desc, x.it.size].filter(Boolean).join(" "), sys: x.it.sys, phy: x.fin, remark: x.it.remark || "" })).slice(0, fd.max); }
@@ -1856,23 +1856,40 @@ FORMS.salesup = { id: "salesup", letter: "SF", kind: "sheet", single: "day", mgr
 FORM_ORDER.push("salesup");
 /* the newest stored numbers for one day, whichever upload they came in */
 function salesDay(date) { let best = null; S.recs.forEach(r => { if (r.form === "salesup" && r.data && r.data.days && r.data.days[date] && (!best || (r.at || 0) > (best.at || 0))) best = { at: r.at, d: r.data.days[date] }; }); return best ? best.d : null; }
-function salesItemsBefore(date, back = 7) { for (let i = 1; i <= back; i++) { const d = salesDay(addDays(date, -i)); if (d && d.items && d.items.length) return { date: addDays(date, -i), items: d.items }; } return null; }
-/* reads the till export. Customer columns are never read or kept. */
-function parseSalesFile(rows) {
-  const hi = rows.findIndex(r => r.some(c => /date/i.test(String(c))) && r.some(c => /qty|quantity/i.test(String(c)))); if (hi < 0) return { err: "nodate" };
+/* items sold on the last selling day before `date`; if that is fewer than 20, earlier days top the list up */
+function salesItemsBefore(date, back = 10, want = 20) { let first = null; const out = [], seen = {};
+  for (let i = 1; i <= back && out.length < want; i++) { const x = addDays(date, -i), d = salesDay(x); ((d && d.items) || []).filter(it => it.q > 0).forEach(it => { const k = it.c + "|" + it.z; if (!seen[k] && out.length < want) { seen[k] = 1; out.push(it); if (!first) first = x; } }); }
+  return out.length ? { date: first, items: out } : null; }
+/* reads the till export (every sheet). Customer columns are never read or kept. */
+async function readBook(file) { const X = await loadXlsx(), wb = X.read(await file.arrayBuffer(), { type: "array" }); return wb.SheetNames.map(n => X.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" })); }
+const SIZE_END = /\s+(\d{1,2}(\.5)?|XXS|XS|S|M|L|XL|XXL|One Size)$/i;
+function parseSalesFile(sheets) {
+  if (sheets.length && !Array.isArray(sheets[0][0])) sheets = [sheets];
+  /* an optional stock sheet (Item code + Physical) gives clean names and the system quantity */
+  const stock = {}, names = {}; sheets.forEach(rows => { const hi = rows.findIndex(r => r.some(c => /^item code$/i.test(String(c).trim())) && r.some(c => /^physical$/i.test(String(c).trim()))); if (hi < 0) return;
+    const H = rows[hi].map(c => String(c).trim()), f = re => H.findIndex(h => re.test(h)), c1 = f(/^item code$/i), c2 = f(/^size$/i), c3 = f(/^physical$/i), c4 = f(/item description/i);
+    rows.slice(hi + 1).forEach(r => { const c = String(r[c1]).trim(); if (!c) return; stock[c + "|" + String(r[c2] ?? "").trim()] = num(r[c3]); if (c4 >= 0 && !names[c]) names[c] = String(r[c4]).trim(); }); });
+  const rows = sheets.find(rs => rs.some(r => r.some(c => /date/i.test(String(c))) && r.some(c => /qty|quantity/i.test(String(c))))); if (!rows) return { err: "nodate" };
+  const hi = rows.findIndex(r => r.some(c => /date/i.test(String(c))) && r.some(c => /qty|quantity/i.test(String(c))));
   const H = rows[hi].map(c => String(c).trim()), col = (re, not) => H.findIndex(h => re.test(h) && !(not && not.test(h)));
-  const cD = col(/document date|^date/i), cS = col(/sale ?s?person|salesman|seller/i), cQ = col(/total qty|^qty|quantity/i), cA = col(/tax incl/i) >= 0 ? col(/tax incl/i) : col(/amount|total/i, /qty|vat|excl/i), cT = col(/posting type/i);
-  const cC = col(/item code|article|item ref|^item$|style|product code|barcode|sku/i, /document|fiscal|invoice/i), cZ = col(/size/i);
+  const cD = col(/document date|^date/i), cS = col(/^sale ?s?person|salesman|seller/i), cQ = col(/total qty|^qty|quantity/i), cT = col(/posting type/i), cN = col(/^number$|^internal number$/i);
+  let cA = col(/tax incl\.? ?(amount|total)/i); if (cA < 0) cA = col(/amount|total/i, /qty|vat|excl|unit/i);
+  const cC = col(/item code|article|item ref|^item$|style|product code|sku/i, /document|fiscal|invoice|barcode/i), cZ = col(/^size$/i), cX = col(/^description$|item description/i);
   if (cD < 0 || cQ < 0 || cA < 0) return { err: "cols" };
-  const days = {}, hasItems = cC >= 0;
+  const days = {}, hasItems = cC >= 0, who = v => { const t = String(v).trim().replace(/\.0$/, ""); return staff(t) ? shortName(t) : (t || "?"); };
   rows.slice(hi + 1).forEach(r => { const date = anyToYmd(r[cD]); if (!date) return; if (cT >= 0 && String(r[cT]).trim().toLowerCase() !== "receipt") return;
-    const qv = num(r[cQ]) || 0, av = num(r[cA]) || 0, d = days[date] = days[date] || { sales: 0, inv: 0, units: 0, refunds: 0, people: {} };
-    d.sales += av; d.units += qv; if (av < 0) d.refunds += -av; if (!hasItems) d.inv += 1;
-    if (cS >= 0) { const n = String(r[cS]).trim() || "?", p = d.people[n] = d.people[n] || { r: 0, u: 0, s: 0 }; if (av > 0 && !hasItems) p.r += 1; p.u += qv; p.s += av; }
-    if (hasItems) { const c = String(r[cC]).trim(), z = cZ >= 0 ? String(r[cZ]).trim() : ""; if (c) { d.im = d.im || {}; const k = c + "|" + z, it = d.im[k] = d.im[k] || { c, z, q: 0, a: 0 }; it.q += qv; it.a += av; } } });
-  Object.values(days).forEach(d => { d.sales = +d.sales.toFixed(2); d.refunds = +d.refunds.toFixed(2); Object.values(d.people).forEach(p => { p.s = +p.s.toFixed(2); }); if (d.im) { d.items = Object.values(d.im).filter(i => i.q > 0).sort((a, b) => b.q - a.q || b.a - a.a); delete d.im; d.hasItems = true; delete d.inv; } if (!Object.keys(d.people).length) delete d.people; });
-  return Object.keys(days).length ? { days, hasItems } : { err: "empty" };
+    const code = hasItems ? String(r[cC]).trim() : "", desc = cX >= 0 ? String(r[cX]).trim() : ""; if (hasItems && (!code || code === "FD" || /cash float/i.test(desc))) return;      // till float lines are not sales
+    const qv = num(r[cQ]) || 0, av = num(r[cA]) || 0, d = days[date] = days[date] || { sales: 0, inv: 0, units: 0, refunds: 0, people: {}, docs: {} };
+    d.sales += av; d.units += qv; if (av < 0) d.refunds += -av;
+    const doc = cN >= 0 ? String(r[cN]) : "row" + Math.random(); if (!d.docs[doc]) { d.docs[doc] = 1; d.inv += 1; }
+    if (cS >= 0) { const n = who(r[cS]), p = d.people[n] = d.people[n] || { r: 0, u: 0, s: 0, docs: {} }; if (!p.docs[doc]) { p.docs[doc] = 1; if (av > 0) p.r += 1; } p.u += qv; p.s += av; }
+    if (hasItems) { const z = cZ >= 0 ? String(r[cZ] ?? "").trim() : ""; d.im = d.im || {}; const k = code + "|" + z, it = d.im[k] = d.im[k] || { c: code, z, q: 0, a: 0, n: names[code] || desc.replace(SIZE_END, "") }; it.q += qv; it.a += av; if (stock[k] != null) it.sys = stock[k]; } });
+  Object.values(days).forEach(d => { d.sales = +d.sales.toFixed(2); d.refunds = +d.refunds.toFixed(2); delete d.docs; Object.values(d.people).forEach(p => { p.s = +p.s.toFixed(2); delete p.docs; });
+    if (d.im) { d.items = Object.values(d.im).filter(i => i.q !== 0).sort((a, b) => b.q - a.q || b.a - a.a); delete d.im; d.hasItems = true; } if (!Object.keys(d.people).length) delete d.people; });
+  return Object.keys(days).length ? { days, hasItems, hasStock: Object.keys(stock).length > 0 } : { err: "empty" };
 }
+/* models ranked by units, over a list of stored days */
+function topModels(list) { const m = {}; list.forEach(d => ((d && d.items) || []).forEach(it => { const k = it.n || it.c, x = m[k] = m[k] || { n: k, q: 0, a: 0 }; x.q += it.q; x.a += it.a; })); return Object.values(m).filter(x => x.q > 0).sort((a, b) => b.q - a.q || b.a - a.a); }
 let SF = null;                                   // a file that was read and is waiting to be saved
 VIEWS.salesup = (me, mgr) => {
   const ar = LANG === "ar", td = today(), yd = addDays(td, -1), done = S.recs.has("salesup_" + td), ydD = salesDay(yd);
@@ -1882,27 +1899,30 @@ VIEWS.salesup = (me, mgr) => {
   const pTable = rowsP => rowsP.length ? `<table class="t num"><tr><th>${ar ? "البائع" : "Salesperson"}</th><th style="text-align:end">${ar ? "فواتير" : "Receipts"}</th><th style="text-align:end">${ar ? "قطع" : "Units"}</th><th style="text-align:end">${ar ? "المبيعات" : "Sales SAR"}</th></tr>${rowsP.map(([n, p]) => `<tr><td>${esc(n)}</td><td style="text-align:end">${p.r}</td><td style="text-align:end">${p.u}</td><td style="text-align:end"><b>${money(p.s)}</b></td></tr>`).join("")}</table>` : `<p class="muted small">${ar ? "لا توجد بيانات بعد." : "No data yet."}</p>`;
   const ym = ymOf(td), monthDays = []; for (let x = ym + "-01"; x <= td; x = addDays(x, 1)) { const d = salesDay(x); if (d) monthDays.push(d); }
   let h = `<div class="sec"><h1>${ar ? "ملف مبيعات الأمس" : "Yesterday's sales file"}</h1><span class="chip ${done ? "ok" : "warn"}">${done ? (ar ? "تم اليوم" : "Done today") : (ar ? "مطلوب اليوم" : "Due today")}</span></div>
-    <p class="muted">${ar ? "كل يوم: صدّر ملف الإيصالات من نظام البيع (Excel) وارفعه هنا. لا تُحفظ أسماء العملاء." : "Every day: export the receipts file from the till system (Excel) and upload it here. Customer names are not read or kept."}</p>${fileBtn("sfFile", ar ? "اختر الملف" : "Choose the file")}<p class="small" id="sfMsg" style="color:var(--bad)"></p>`;
+    <p class="muted">${ar ? "كل يوم: صدّر تقرير المبيعات من نظام البيع (Excel مع ورقة المخزون) وارفعه هنا. لا تُحفظ أسماء العملاء." : "Every day: export the Sales Report from the till system (Excel, with the stock sheet) and upload it here. Customer names are not read or kept."}</p>${fileBtn("sfFile", ar ? "اختر الملف" : "Choose the file")}<p class="small" id="sfMsg" style="color:var(--bad)"></p>`;
   if (SF) { const ds = Object.keys(SF.days).sort();
     h += `<div class="card stack"><b>${ar ? "ما وُجد في الملف" : "What the file holds"}</b><div class="scroll"><table class="t num"><tr><th>${ar ? "اليوم" : "Day"}</th><th style="text-align:end">${ar ? "فواتير" : "Receipts"}</th><th style="text-align:end">${ar ? "قطع" : "Units"}</th><th style="text-align:end">${ar ? "المبيعات" : "Sales SAR"}</th><th style="text-align:end">${ar ? "التقرير اليومي" : "Daily report"}</th></tr>${ds.map(x => dayRow(x, SF.days[x])).join("")}</table></div>
       <p class="small muted">${ar ? "العمود الأخير: ✓ يعني مطابق لتقرير المبيعات اليومي. الرقم الأحمر هو ما في التقرير." : "Last column: ✓ means it matches the Daily Sales Report. A red number is what the report has instead."}</p>
       ${!SF.days[yd] ? `<div class="banner">${ar ? "الملف لا يحتوي على يوم أمس" : "The file has no rows for yesterday"} (${fmtD(yd)}).</div>` : ""}
-      ${SF.hasItems ? "" : `<div class="banner">${ar ? "هذا الملف بلا أكواد أصناف، فلا يغذي الجرد العشوائي. ارفع أيضاً ملف الأصناف المباعة." : "This file has no item codes, so it cannot feed the random stock check. Upload the items sold file as well."}</div>`}
+      ${SF.hasItems ? "" : `<div class="banner">${ar ? "هذا الملف بلا أكواد أصناف، فلا يغذي الجرد العشوائي. ارفع أيضاً ملف الأصناف المباعة." : "This file has no item codes, so it cannot feed the random stock check. Upload the Sales Report with item lines instead."}</div>`}
       <label class="row"><input type="checkbox" id="sfFill" checked style="width:22px;height:22px"><span class="grow small">${ar ? "املأ تقارير المبيعات اليومية الفارغة من هذا الملف" : "Fill empty Daily Sales Reports from this file"}</span></label>
       <button class="btn" id="sfSave">${ar ? "حفظ" : "Save"}</button></div>`; }
   h += `<div class="sec"><h2>${ar ? "مبيعات كل بائع أمس" : "Sales per person, yesterday"}</h2><span class="num">${fmtD(yd)}</span></div><div class="card" style="padding:4px 10px">${pTable(ppl([ydD]))}</div>
     <div class="sec"><h2>${ar ? "مبيعات كل بائع هذا الشهر" : "Sales per person, this month"}</h2><span class="num">${monthDays.length} ${ar ? "يوم" : "days"}</span></div><div class="card" style="padding:4px 10px">${pTable(ppl(monthDays))}</div>`;
+  const tm = (list, n) => { const t = topModels(list); return t.length ? `<table class="t num"><tr><th>#</th><th>${ar ? "الموديل" : "Model"}</th><th style="text-align:end">${ar ? "قطع" : "Units"}</th><th style="text-align:end">${ar ? "المبيعات" : "Sales SAR"}</th></tr>${t.slice(0, n).map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.n)}</td><td style="text-align:end"><b>${x.q}</b></td><td style="text-align:end">${money(x.a)}</td></tr>`).join("")}</table>${t.length > n ? `<p class="small muted">+ ${t.length - n} ${ar ? "موديل آخر" : "more models"}</p>` : ""}` : `<p class="muted small">${ar ? "لا توجد بيانات أصناف بعد." : "No item data yet."}</p>`; };
+  h += `<div class="sec"><h2>${ar ? "الأكثر مبيعاً هذا الشهر" : "Top sellers, this month"}</h2><button class="chip" id="sfAll" style="border:0">${R.all ? (ar ? "أقل" : "Top 10") : (ar ? "الكل" : "Show all")}</button></div><div class="card" style="padding:4px 10px">${tm(monthDays, R.all ? 999 : 10)}</div>`;
   const src = salesItemsBefore(td); h += `<div class="card stack"><b>${ar ? "الجرد العشوائي" : "Random stock check"}</b><p class="small muted">${src ? (ar ? `سيبدأ جرد اليوم بالأصناف المباعة يوم ${fmtD(src.date)} (${Math.min(20, src.items.length)} صنف).` : `Today's stock check starts with the items sold on ${fmtD(src.date)} (${Math.min(20, src.items.length)} items).`) : (ar ? "لا يوجد ملف أصناف بعد، فيبقى الجرد يدوياً." : "No items file has been uploaded yet, so the stock check list stays manual.")}</p></div>`;
   return h;
 };
 HOOKS.salesup = app => {
   const ar = LANG === "ar", msg = t => { $("#sfMsg", app).textContent = t; };
   $("#sfFile", app).onchange = async e => { const f = e.target.files[0]; if (!f) return; msg("");
-    try { const p = parseSalesFile(await readSheetRows(f)); if (p.err) { SF = null; msg(ar ? "تعذّرت قراءة الملف. تأكد أنه ملف الإيصالات من نظام البيع." : "The file could not be read. Check that it is the receipts export from the till system."); } else SF = p; }
+    try { const p = parseSalesFile(await readBook(f)); if (p.err) { SF = null; msg(ar ? "تعذّرت قراءة الملف. تأكد أنه ملف الإيصالات من نظام البيع." : "The file could not be read. Check that it is the receipts export from the till system."); } else SF = p; }
     catch (er) { console.error(er); SF = null; msg(er.message || String(er)); } render(); };
+  const al = $("#sfAll", app); if (al) al.onclick = () => { R.all = !R.all; render(); };
   const sv = $("#sfSave", app); if (sv) sv.onclick = async () => { const td = today(), fill = $("#sfFill", app).checked, days = {};
     for (const d of Object.keys(SF.days)) await loadMonth(ymOf(d));
-    Object.entries(SF.days).forEach(([d, v]) => { const ex = salesDay(d); days[d] = v.hasItems && ex && ex.inv != null ? Object.assign({}, ex, { items: v.items, hasItems: true }) : Object.assign({}, ex, v); });
+    Object.entries(SF.days).forEach(([d, v]) => { days[d] = Object.assign({}, salesDay(d), v); });
     const old = S.recs.get("salesup_" + td); Data.saveRec("salesup_" + td, { form: "salesup", date: td, at: Date.now(), by: ME, data: { forDate: addDays(td, -1), days: Object.assign({}, old && old.data.days, days) } });
     if (fill) Object.entries(SF.days).forEach(([d, v]) => { const r = dsrRec(d); if (v.inv == null || d < closeCfg().openDate || (r && num(r.data.sales) !== null)) return; Data.patchRec("dsr_" + d, { form: "dsr", date: d, at: Date.now(), by: ME, data: {} }, { data: { sales: String(v.sales), inv: String(v.inv), units: String(v.units), refunds: v.refunds ? String(v.refunds) : "" } }); });
     SF = null; toast(T("saved")); render(); };
