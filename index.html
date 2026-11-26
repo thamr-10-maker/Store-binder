@@ -2,33 +2,34 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="theme-color" content="#000000">
 <meta name="robots" content="noindex,nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Store Binder</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* Layout idea: a phone-first work tool. One column, big touch targets, status told by colour + shape. */
 :root{
-  --bg:#f3f4f1; --surface:#ffffff; --surface2:#e9ebe6; --ink:#16201c; --muted:#5d6a64; --line:#d5d9d2;
-  --accent:#0d5c4b; --accent-ink:#ffffff; --accent-soft:#dcebe5;
-  --ok:#1f7a45; --ok-soft:#dff1e5; --warn:#a15c00; --warn-soft:#fbecd2; --bad:#b3261e; --bad-soft:#fadfdc;
-  --font:"IBM Plex Sans","IBM Plex Sans Arabic",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
-  --r:14px;
+  --bg:#f4f4f2; --surface:#ffffff; --surface2:#ebebe8; --ink:#000000; --muted:#63635f; --line:#dcdcd7;
+  --accent:#000000; --accent-ink:#ffffff; --accent-soft:#ebebe8;
+  --ok:#17693a; --ok-soft:#e0f0e5; --warn:#8f5200; --warn-soft:#f8ead0; --bad:#b3261e; --bad-soft:#fae0dd;
+  --font:"Archivo","IBM Plex Sans Arabic",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --r:10px;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme:dark;
-    --bg:#111614; --surface:#1a211e; --surface2:#242d29; --ink:#e9eee9; --muted:#9aa8a1; --line:#334039;
-    --accent:#4fc3a5; --accent-ink:#06231b; --accent-soft:#1d3a32;
-    --ok:#62c98a; --ok-soft:#173524; --warn:#f0b35a; --warn-soft:#3b2c12; --bad:#ff8a80; --bad-soft:#42201d;
+    --bg:#000000; --surface:#141414; --surface2:#232323; --ink:#ffffff; --muted:#a3a39e; --line:#303030;
+    --accent:#ffffff; --accent-ink:#000000; --accent-soft:#232323;
+    --ok:#6bd494; --ok-soft:#12301f; --warn:#f0b35a; --warn-soft:#352810; --bad:#ff8a80; --bad-soft:#3d1c19;
   }
 }
 :root[data-theme="dark"]{
   color-scheme:dark;
-  --bg:#111614; --surface:#1a211e; --surface2:#242d29; --ink:#e9eee9; --muted:#9aa8a1; --line:#334039;
-  --accent:#4fc3a5; --accent-ink:#06231b; --accent-soft:#1d3a32;
-  --ok:#62c98a; --ok-soft:#173524; --warn:#f0b35a; --warn-soft:#3b2c12; --bad:#ff8a80; --bad-soft:#42201d;
+  --bg:#000000; --surface:#141414; --surface2:#232323; --ink:#ffffff; --muted:#a3a39e; --line:#303030;
+  --accent:#ffffff; --accent-ink:#000000; --accent-soft:#232323;
+  --ok:#6bd494; --ok-soft:#12301f; --warn:#f0b35a; --warn-soft:#352810; --bad:#ff8a80; --bad-soft:#3d1c19;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -122,6 +123,35 @@ textarea.big{min-height:190px;resize:vertical;line-height:1.4}
 table.t{width:100%;border-collapse:collapse;font-size:.9rem} table.t td,table.t th{padding:8px 6px;border-top:1px solid var(--line);text-align:start;vertical-align:top} table.t th{color:var(--muted);font-weight:600;border-top:0}
 .scroll{overflow-x:auto}
 [dir="rtl"] .flip{transform:scaleX(-1)}
+/* ---- On look: black and white, the black band at the top carries the logo ---- */
+h1{font-size:1.7rem;font-weight:800;letter-spacing:-.025em} h2{font-size:1.2rem;font-weight:700;letter-spacing:-.015em} h3{font-weight:700}
+.top{background:#000;color:#fff;border-bottom:1px solid #2a2a2a;padding:10px 16px;min-height:60px}
+.top .logo{width:30px;height:30px;flex:0 0 auto;display:block}
+.top .who b{font-weight:700;letter-spacing:-.01em} .top .who span{color:#b9b9b4}
+.top .pill{background:transparent;color:#fff;border-color:#5a5a5a}
+.btn{border-radius:999px;font-weight:700;letter-spacing:-.005em}
+.btn.alt{border:1.5px solid var(--ink)} .btn.soft{background:var(--surface);color:var(--ink);border:1.5px dashed var(--ink)}
+.btn.sm{border-radius:999px;padding:8px 14px}
+.btn.bad{border:1.5px solid var(--bad);background:var(--surface)}
+.card,.kpi,.tile,.list,.task{box-shadow:0 1px 0 rgba(0,0,0,.04)}
+.kpi b{font-weight:800;letter-spacing:-.03em;font-size:1.9rem}
+.tile .let{color:var(--muted)}
+.chip.acc{background:var(--ink);color:var(--bg)}
+nav.tabs button{position:relative} nav.tabs button.on{color:var(--ink)} nav.tabs button.on::before{content:"";position:absolute;top:0;left:22%;right:22%;height:3px;background:var(--ink);border-radius:0 0 3px 3px}
+.opt{border-radius:12px} .opt.on{border-color:var(--ink);background:var(--ink);color:var(--bg)}
+.wiz .q{font-weight:800;letter-spacing:-.02em}
+.wiz header{background:#000;color:#fff;border-bottom:0} .wiz header .pill{background:transparent;color:#fff;border-color:#5a5a5a} .wiz header .chip{background:#fff;color:#000}
+.wiz .prog{background:#2a2a2a;height:4px} .wiz .prog i{background:#fff}
+.in{border-radius:8px} .in:focus,.big:focus{border-color:var(--ink);outline:2px solid var(--ink);outline-offset:0}
+.days button.on{background:var(--ink);border-color:var(--ink);color:var(--bg)} .days button.on span{color:var(--bg)}
+.pad button{border-radius:50%;aspect-ratio:1;min-height:0;font-weight:700} .pad{max-width:280px;gap:14px}
+.hero{background:#000;color:#fff;border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:12px}
+.hero{--ok:#6bd494;--bad:#ff8a80;--warn:#f0b35a;--ok-soft:#12301f;--warn-soft:#352810;--bad-soft:#3d1c19}
+.hero .muted{color:#b9b9b4} .hero .score{font-size:4rem;font-weight:800;letter-spacing:-.04em}
+.hero .chip{background:#2a2a2a;color:#fff}
+.brand{display:flex;flex-direction:column;align-items:center;gap:14px;background:#000;color:#fff;border-radius:var(--r);padding:28px 18px;text-align:center}
+.brand img{width:54px;height:54px} .brand b{font-size:1.5rem;font-weight:800;letter-spacing:-.025em} .brand span{color:#b9b9b4;font-size:.9rem}
+summary{font-weight:700;cursor:pointer}
 @media (max-width:400px){.kpis{grid-template-columns:1fr 1fr 1fr}.wiz .q{font-size:1.35rem}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -982,7 +1012,7 @@ function render() {
   const me = staff(ME), mgr = isMgrRole(me.role), tabs = mgr ? MGR_TABS : STAFF_TABS;
   if (!VIEWS[R.view]) R.view = "home";
   const st = S.cfg.store || {};
-  app.innerHTML = `<div class="top"><div class="who"><b>${esc(me.short || me.name)}</b><span>${esc(L(ROLES[me.role]))} · ${esc(st.name || "")}</span></div><button class="pill" id="tpLang">${T("lang")}</button></div>
+  app.innerHTML = `<div class="top"><img class="logo" src="forms/logo-w.png" alt="On"><div class="who"><b>${esc(me.short || me.name)}</b><span>${esc(L(ROLES[me.role]))} · ${esc(st.name || "")}</span></div><button class="pill" id="tpLang">${T("lang")}</button></div>
     <main>${banners()}${VIEWS[R.view](me, mgr)}</main>
     <nav class="tabs"><div>${tabs.map(([v, k, ic]) => `<button data-go="${v}" class="${R.view === v || (v === "more" && !tabs.some(t => t[0] === R.view)) ? "on" : ""}">${ICON[ic]}<span>${T(k)}</span></button>`).join("")}</div></nav>`;
   bind(app);
@@ -1022,7 +1052,7 @@ let LG = { id: null, pin: "", first: "", stage: "" };
 function renderLogin(app) {
   const list = staffList();
   if (!LG.id) {
-    app.innerHTML = `<div class="top"><div class="who"><b>${T("appName")}</b><span>${esc(storeLine())}</span></div><button class="pill" id="tpLang">${T("lang")}</button></div><main>${S.mode === "local" ? `<div class="banner">${T("localOnly")}</div>` : ""}<h1>${T("whoAreYou")}</h1>
+    app.innerHTML = `<div class="top"><img class="logo" src="forms/logo-w.png" alt="On"><div class="who"><b>${T("appName")}</b><span>${esc(storeLine())}</span></div><button class="pill" id="tpLang">${T("lang")}</button></div><main>${S.mode === "local" ? `<div class="banner">${T("localOnly")}</div>` : ""}<h1>${T("whoAreYou")}</h1>
       <div class="stack">${list.map(s => `<button class="task" data-who="${esc(s.id)}"><span class="grow"><b>${esc(s.short || s.name)}</b><small>${esc(L(ROLES[s.role]))} · ${esc(s.id)}</small></span>${ICON.chev}</button>`).join("")}</div></main>`;
     $("#tpLang", app).onclick = () => { setLang(LANG === "ar" ? "en" : "ar"); render(); };
     app.querySelectorAll("[data-who]").forEach(b => b.onclick = () => { const s = staff(b.dataset.who); LG = { id: s.id, pin: "", first: "", stage: "enter" }; render(); });
