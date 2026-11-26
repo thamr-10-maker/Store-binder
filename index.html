@@ -1163,9 +1163,10 @@ VIEWS.plan = (me, mgr) => {
     <div class="stack">${tasks.map(t => `<div class="card stack" style="border-inline-start:6px solid var(--${t.done ? "ok" : t.late ? "bad" : "line"})"><div class="row"><b class="grow">${esc(t.title)}</b>${t.done ? `<span class="chip ok">✓</span>` : ""}</div>
       <div class="row"><div class="grow" style="min-width:150px">${sel(t)}</div><input class="in num" type="time" data-due="${esc(t.key)}" value="${esc(t.due)}" style="width:auto" aria-label="${T("dueBy")}">${t.group ? "" : `<button class="btn sm alt" data-skip="${t.id}" title="Skip this day">${ar ? "تخطي" : "Skip"}</button>`}</div></div>`).join("") || `<div class="card muted">${T("nothingYet")}</div>`}</div>`;
   if (canZ) h += `<div class="sec"><h2>${ar ? "المناطق" : "Zones"}</h2><button class="btn sm alt" id="plZCopy">${ar ? "نسخ مناطق اليوم السابق" : "Copy zones from the day before"}</button></div>
-    <div class="stack">${zl.map(z => { const asg = zoneAsg(d, z.id); return `<div class="card stack" style="border-inline-start:6px solid var(--${asg.length ? "ok" : "line"})"><b>${esc(z.name)}</b>
+    <div class="stack">${zl.map(z => { const asg = zoneAsg(d, z.id); return `<div class="card stack" style="border-inline-start:6px solid var(--${asg.length ? "ok" : "line"})"><div class="row"><b class="grow">${esc(z.name)}</b><button class="pill" data-zdel="${esc(z.id)}" style="min-height:34px;padding:4px 12px;color:var(--bad);font-size:.8rem">${ar ? "حذف المنطقة" : "Delete zone"}</button></div>
       ${asg.length ? `<div class="row">${asg.map((a, k) => `<span class="chip acc" style="padding:4px 4px 4px 12px;font-size:.92rem;gap:8px">${esc(shortName(a.who))}<button data-zt="${esc(z.id)}:${k}" class="btn sm" style="min-height:34px;padding:4px 12px" aria-label="Change shift">${a.s}</button><button data-zx="${esc(z.id)}:${k}" class="btn sm alt" style="min-height:34px;padding:4px 10px" aria-label="Remove">✕</button></span>`).join("")}</div>` : ""}
       <select class="in" data-zadd="${esc(z.id)}" aria-label="${T("assignTo")}"><option value="">+ ${ar ? "إضافة شخص" : "Add a person"}</option>${on.map(s => `<option value="${esc(s.id)}">${esc(s.short || s.name)}${shiftOf(d, s.id) ? " · " + shiftOf(d, s.id) : ""}</option>`).join("")}</select></div>`; }).join("")}</div>
+    <div class="row"><input class="in grow" id="plZName" placeholder="${esc(nextZoneName())}" aria-label="${ar ? "اسم منطقة جديدة" : "Name of a new zone"}"><button class="btn sm" id="plZNew">+ ${ar ? "إضافة منطقة" : "Add a zone"}</button></div>
     <p class="small muted">${ar ? "اضغط AM أو PM بجانب الاسم لتغيير الوردية." : "Tap AM or PM next to a name to change the shift."}</p>`;
   if (canT) h += `${checks.length ? `<div class="sec"><h2>${ar ? "تقسيم المهمة على الفريق" : "Share a task between people"}</h2></div><div class="list">${checks.map(id => `<label class="row"><input type="checkbox" data-split="${id}" ${isSplit(id, d) ? "checked" : ""} style="width:22px;height:22px"><span class="grow">${esc(L(FORMS[id].title))}<div class="small muted">${groupsOf(id).map(g => esc(groupLabel(id, g))).join(" · ")}</div></span></label>`).join("")}</div>` : ""}
     ${skipped.length ? `<div class="sec"><h2>${ar ? "تم تخطيها هذا اليوم" : "Skipped on this day"}</h2></div><div class="row">${skipped.map(id => `<button class="chip" data-unskip="${id}" style="border:0;padding:8px 12px">↩ ${esc(L(FORMS[id].title))}</button>`).join("")}</div>` : ""}`;
@@ -1188,6 +1189,8 @@ HOOKS.plan = app => {
   app.querySelectorAll("[data-zadd]").forEach(s => s.onchange = () => { if (s.value) zedit(s.dataset.zadd, l => l.push({ who: s.value, s: shiftOf(d, s.value) === "PM" ? "PM" : "AM" })); });
   app.querySelectorAll("[data-zt]").forEach(b => b.onclick = () => { const [z, k] = b.dataset.zt.split(":"); zedit(z, l => { l[+k].s = l[+k].s === "AM" ? "PM" : "AM"; }); });
   app.querySelectorAll("[data-zx]").forEach(b => b.onclick = () => { const [z, k] = b.dataset.zx.split(":"); zedit(z, l => l.splice(+k, 1)); });
+  app.querySelectorAll("[data-zdel]").forEach(b => b.onclick = () => { const z = zoneList().find(x => x.id === b.dataset.zdel); ask(LANG === "ar" ? `حذف ${z.name}؟` : `Delete ${z.name}?`, LANG === "ar" ? "تختفي المنطقة من الخطة لكل الأيام. يمكن للمدير إعادتها من إعداد المناطق." : "The zone disappears from the plan for every day. A manager can bring it back under Zone set-up.", T("del") || "Delete", () => { saveZones({ [z.id]: { active: false } }); toast(T("saved")); }, true); });
+  const za = $("#plZNew", app); if (za) za.onclick = () => { const n = $("#plZName", app).value.trim() || nextZoneName(); saveZones({ ["z" + rid()]: { name: n, ord: Date.now(), active: true } }); toast(T("saved")); };
   const zc = $("#plZCopy", app); if (zc) zc.onclick = () => { const pd = addDays(d, -1); edit(p => { p.zones = {}; zoneList().forEach(z => { const l = zoneAsg(pd, z.id); if (l.length) p.zones[z.id] = { list: clone(l) }; }); }); toast(T("saved")); };
 };
 
@@ -1520,11 +1523,13 @@ function reqPages(g) {
 
 /* ===================== floor zones: set-up here, daily assigning on the Plan page ===================== */
 const ZONE_DEF = () => { const z = {}; for (let i = 1; i <= 6; i++) z["z" + i] = { name: "Zone " + i, ord: i, active: true }; return z; };
-const zoneCfg = () => { const z = S.cfg && S.cfg.zones; return z && Object.keys(z).length ? z : ZONE_DEF(); };
+/* zones saved before version 3 are ignored, so every store starts from Zone 1 to Zone 6 */
+const zoneCfg = () => { const z = S.cfg && S.cfg.zones; return S.cfg && S.cfg.zonesV === 3 && z && Object.keys(z).length ? z : ZONE_DEF(); };
 const zoneList = all => Object.entries(zoneCfg()).map(([id, z]) => ({ id, ...z })).filter(z => all || z.active !== false).sort((a, b) => (a.ord || 0) - (b.ord || 0));
 const zoneAsg = (date, zid) => { const v = (planOf(date).zones || {})[zid]; if (!v) return []; if (Array.isArray(v.list)) return v.list.filter(a => a && a.who); return ["AM", "PM"].filter(s => v[s]).map(s => ({ who: v[s], s })); };
 const zonesOf = (date, sid) => zoneList().flatMap(z => zoneAsg(date, z.id).filter(a => a.who === sid).map(a => ({ z, s: a.s })));
-const saveZones = patch => { const has = S.cfg && S.cfg.zones && Object.keys(S.cfg.zones).length; Data.saveCfg({ zones: has ? patch : deepMerge(ZONE_DEF(), patch) }); };
+const saveZones = patch => { const has = S.cfg && S.cfg.zonesV === 3 && S.cfg.zones && Object.keys(S.cfg.zones).length; if (has) return Data.saveCfg({ zones: patch }); const c = clone(S.cfg); c.zones = deepMerge(ZONE_DEF(), patch); c.zonesV = 3; return Data.setCfg(c); };
+const nextZoneName = () => { const nums = zoneList(true).map(z => +(String(z.name).match(/^Zone (\d+)$/) || [])[1] || 0); return "Zone " + (Math.max(0, ...nums) + 1); };
 VIEWS.zones = (me, mgr) => {
   const ar = LANG === "ar", all = zoneList(true), n = all.filter(z => z.active !== false).length;
   if (!mgr) return `<div class="card muted">${ar ? "هذه الصفحة للمدير." : "This page is for the managers."}</div>`;
