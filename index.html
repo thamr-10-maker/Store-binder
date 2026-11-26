@@ -126,7 +126,9 @@ table.t{width:100%;border-collapse:collapse;font-size:.9rem} table.t td,table.t 
 /* ---- On look: black and white, the black band at the top carries the logo ---- */
 h1{font-size:1.7rem;font-weight:800;letter-spacing:-.025em} h2{font-size:1.2rem;font-weight:700;letter-spacing:-.015em} h3{font-weight:700}
 .top{background:#000;color:#fff;border-bottom:1px solid #2a2a2a;padding:10px 16px;min-height:60px}
-.top .logo{width:30px;height:30px;flex:0 0 auto;display:block}
+.logo{object-fit:contain}
+.top .logo{width:auto;height:32px;flex:0 0 auto;display:block}
+.qt{font-size:1.05rem;font-weight:700;line-height:1.35;letter-spacing:-.005em}
 .top .who b{font-weight:700;letter-spacing:-.01em} .top .who span{color:#b9b9b4}
 .top .pill{background:transparent;color:#fff;border-color:#5a5a5a}
 .btn{border-radius:999px;font-weight:700;letter-spacing:-.005em}
@@ -150,7 +152,7 @@ nav.tabs button{position:relative} nav.tabs button.on{color:var(--ink)} nav.tabs
 .hero .muted{color:#b9b9b4} .hero .score{font-size:4rem;font-weight:800;letter-spacing:-.04em}
 .hero .chip{background:#2a2a2a;color:#fff}
 .brand{display:flex;flex-direction:column;align-items:center;gap:14px;background:#000;color:#fff;border-radius:var(--r);padding:28px 18px;text-align:center}
-.brand img{width:54px;height:54px} .brand b{font-size:1.5rem;font-weight:800;letter-spacing:-.025em} .brand span{color:#b9b9b4;font-size:.9rem}
+.brand img{width:auto;height:58px} .brand b{font-size:1.5rem;font-weight:800;letter-spacing:-.025em} .brand span{color:#b9b9b4;font-size:.9rem}
 summary{font-weight:700;cursor:pointer}
 @media (max-width:400px){.kpis{grid-template-columns:1fr 1fr 1fr}.wiz .q{font-size:1.35rem}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
