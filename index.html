@@ -154,6 +154,13 @@ nav.tabs button{position:relative} nav.tabs button.on{color:var(--ink)} nav.tabs
 .brand{display:flex;flex-direction:column;align-items:center;gap:14px;background:#000;color:#fff;border-radius:var(--r);padding:28px 18px;text-align:center}
 .brand img{width:auto;height:58px} .brand b{font-size:1.5rem;font-weight:800;letter-spacing:-.025em} .brand span{color:#b9b9b4;font-size:.9rem}
 summary{font-weight:700;cursor:pointer}
+/* ranked bars: one ink series, value printed on every row, rounded only at the data end */
+.bars{display:flex;flex-direction:column;gap:12px}
+.br{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:baseline}
+.br .bl{font-weight:600;min-width:0;overflow-wrap:anywhere} .br .bv{font-weight:700;white-space:nowrap}
+.br .bt{grid-column:1 / -1;position:relative;height:8px;background:var(--surface2);border-radius:4px}
+.br .bt i{display:block;height:100%;background:var(--ink);border-start-end-radius:4px;border-end-end-radius:4px;min-width:2px}
+.br .bt b{position:absolute;top:-4px;width:2px;height:16px;background:var(--muted);box-shadow:0 0 0 2px var(--surface)}
 @media (max-width:400px){.kpis{grid-template-columns:1fr 1fr 1fr}.wiz .q{font-size:1.35rem}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -1087,7 +1094,7 @@ function signOut() { ME = null; REAL = null; try { localStorage.removeItem("sb-m
 VIEWS.home = (me, mgr) => {
   const d = today(), tasks = tasksFor(d), mine = tasks.filter(t => t.who === ME), free = tasks.filter(t => !t.who && !t.done);
   const events = formsOn().filter(id => cfgForm(id).freq === "event" && (mgr || !FORMS[id].mgr));
-  let h = myDayCard(me);
+  let h = myDayCard(me) + salesHero();
   if (mgr) {
     const done = tasks.filter(t => t.done).length, late = tasks.filter(t => t.late).length;
     h += `<div class="sec"><h1>${T("today")}</h1><span>${DOW[parseD(d).getDay()]} ${fmtD(d)}</span></div>
@@ -1297,7 +1304,7 @@ HOOKS.review = app => {
 /* ---- more ---- */
 VIEWS.more = (me, mgr) => {
   const link = (v, label, sub) => `<button class="task" data-go="${v}"><span class="grow"><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</span>${ICON.chev}</button>`;
-  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("close", LANG === "ar" ? "إغلاق اليوم" : "Close the day", LANG === "ar" ? "تقارير Z، الشبكة، النقد، التقرير والملفات" : "Z reports, card machine, cash, the report and the online files") + link("salesup", LANG === "ar" ? "ملف مبيعات الأمس" : "Yesterday's sales file", LANG === "ar" ? "رفع يومي، مبيعات كل بائع، وأصناف الجرد" : "Daily upload, sales per person, and the stock check items") + link("dsr", LANG === "ar" ? "تقرير المبيعات اليومي" : "Daily Sales Report", LANG === "ar" ? "أدخل أرقام الإغلاق واحصل على الملخص" : "Enter the closing figures and get the summary") + link("budget", LANG === "ar" ? "الأهداف اليومية" : "Budget", LANG === "ar" ? "ارفع أهداف الشهر مسبقاً" : "Load the month's daily budget in advance") + link("requests", LANG === "ar" ? "طلب التزويد" : "Replenishment request", LANG === "ar" ? "ما طلبه العملاء ولم يتوفر" : "What customers asked for and we did not have") + link("zones", LANG === "ar" ? "إعداد المناطق" : "Zone set-up", LANG === "ar" ? "عدد المناطق وأسماؤها" : "How many zones the store has, and their names") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota")}
+  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("close", LANG === "ar" ? "إغلاق اليوم" : "Close the day", LANG === "ar" ? "تقارير Z، الشبكة، النقد، التقرير والملفات" : "Z reports, card machine, cash, the report and the online files") + link("sales", LANG === "ar" ? "لوحة المبيعات" : "Sales dashboard", LANG === "ar" ? "المبيعات، الأكثر مبيعاً، الفريق" : "Sales, top sellers, team") + link("salesup", LANG === "ar" ? "ملف مبيعات الأمس" : "Yesterday's sales file", LANG === "ar" ? "رفع يومي، مبيعات كل بائع، وأصناف الجرد" : "Daily upload, sales per person, and the stock check items") + link("dsr", LANG === "ar" ? "تقرير المبيعات اليومي" : "Daily Sales Report", LANG === "ar" ? "أدخل أرقام الإغلاق واحصل على الملخص" : "Enter the closing figures and get the summary") + link("budget", LANG === "ar" ? "الأهداف اليومية" : "Budget", LANG === "ar" ? "ارفع أهداف الشهر مسبقاً" : "Load the month's daily budget in advance") + link("requests", LANG === "ar" ? "طلب التزويد" : "Replenishment request", LANG === "ar" ? "ما طلبه العملاء ولم يتوفر" : "What customers asked for and we did not have") + link("zones", LANG === "ar" ? "إعداد المناطق" : "Zone set-up", LANG === "ar" ? "عدد المناطق وأسماؤها" : "How many zones the store has, and their names") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota")}
     ${mgr && !REAL ? `<div class="card stack"><b>${T("viewAs")}</b><select class="in" id="mrAs"><option value="">—</option>${staffList().filter(s => s.id !== ME).map(s => `<option value="${esc(s.id)}">${esc(s.short || s.name)} · ${esc(L(ROLES[s.role]))}</option>`).join("")}</select></div>` : ""}
     <button class="btn alt" id="mrPin">${LANG === "ar" ? "تغيير الرقم السري" : "Change my PIN"}</button><button class="btn alt" id="mrOut">${T("signOut")}</button></div>`;
 };
@@ -1926,6 +1933,52 @@ HOOKS.salesup = app => {
     const old = S.recs.get("salesup_" + td); Data.saveRec("salesup_" + td, { form: "salesup", date: td, at: Date.now(), by: ME, data: { forDate: addDays(td, -1), days: Object.assign({}, old && old.data.days, days) } });
     if (fill) Object.entries(SF.days).forEach(([d, v]) => { const r = dsrRec(d); if (v.inv == null || d < closeCfg().openDate || (r && num(r.data.sales) !== null)) return; Data.patchRec("dsr_" + d, { form: "dsr", date: d, at: Date.now(), by: ME, data: {} }, { data: { sales: String(v.sales), inv: String(v.inv), units: String(v.units), refunds: v.refunds ? String(v.refunds) : "" } }); });
     SF = null; toast(T("saved")); render(); };
+};
+
+/* ===================== sales dashboard: open to the whole team ===================== */
+const daySales = date => { const f = salesDay(date); if (f && f.sales != null) return f.sales; const r = dsrRec(date); return r ? num(r.data.sales) : null; };
+const CAT = c => ({ 1: "Apparel", 2: "Accessories", 3: "Shoes" }[String(c)[0]] || "Other");
+const CAT_AR = { Apparel: "ملابس", Accessories: "إكسسوارات", Shoes: "أحذية", Other: "أخرى" };
+function salesRange(p) { const td = today(), yd = addDays(td, -1); if (p === "y") return [yd, yd]; if (p === "w") return [addDays(td, -7), yd]; const ms = ymOf(td) + "-01"; return [ms, yd < ms ? td : yd]; }          // finished days only, so a part day is not judged against a full target
+function salesSum(from, to) {
+  const o = { sales: 0, units: 0, inv: 0, target: 0, days: [], files: [], n: 0, last: null };
+  const open = closeCfg().openDate; if (from < open) from = open;
+  for (let x = from; x <= to; x = addDays(x, 1)) { const s = daySales(x), f = salesDay(x), t = targetSAR(x); if (s === null) continue; o.n++; o.last = x; o.sales += s; if (t !== null) o.target += t; o.days.push({ x, s, t });
+    if (f) { o.files.push(f); o.units += f.units || 0; o.inv += f.inv || 0; } else { const r = dsrRec(x); if (r) { o.units += num(r.data.units) || 0; o.inv += num(r.data.inv) || 0; } } }
+  return o;
+}
+/* one labelled bar per row: a single series, so no legend and no colour coding */
+const barRows = (rows, o = {}) => { const max = Math.max(1, ...rows.map(r => Math.max(r.v, r.t || 0))); return `<div class="bars">${rows.map(r => `<div class="br"><span class="bl">${r.rank ? `<span class="muted num">${r.rank}</span> ` : ""}${esc(r.l)}${r.sub ? ` <span class="muted">${esc(r.sub)}</span>` : ""}</span><span class="bv num">${esc(r.txt)}</span><div class="bt"><i style="width:${Math.max(0, r.v) / max * 100}%"></i>${r.t ? `<b style="inset-inline-start:${Math.min(100, r.t / max * 100)}%" title="${o.tick || ""}"></b>` : ""}</div></div>`).join("")}</div>`; };
+function salesHero() {
+  const ar = LANG === "ar", [a, b] = salesRange("m"), m = salesSum(a, b); if (!m.n && !iAmMgr()) return "";
+  const v = m.target ? m.sales / m.target - 1 : null;
+  return `<button class="hero" data-go="sales" style="width:100%;border:0;text-align:start;cursor:pointer;font:inherit"><div class="row" style="flex-wrap:nowrap"><div class="grow"><div class="muted small">${ar ? "مبيعات الشهر" : "Sales this month"}</div><div class="score num" style="font-size:2.4rem">${m.n ? money(m.sales) : "–"} <span style="font-size:1rem;font-weight:600">SAR</span></div></div><span class="chip" style="background:#fff;color:#000;font-weight:700">${ar ? "لوحة المبيعات" : "Sales dashboard"} ›</span></div>
+    ${m.n ? `<div class="small muted num">${v === null ? "" : `${fPct(v, 1)} ${ar ? "عن الهدف" : "vs target"} · `}${m.units} ${ar ? "قطعة" : "units"} · ${ar ? "حتى" : "up to"} ${fmtD(m.last)}</div>` : `<div class="small muted">${ar ? "ارفع ملف المبيعات لتظهر الأرقام." : "Upload the sales file to see the numbers."}</div>`}</button>`;
+}
+VIEWS.sales = (me, mgr) => {
+  const ar = LANG === "ar", p = R.p || "m", [from, to] = salesRange(p), d = salesSum(from, to), items = topModels(d.files);
+  const chips = [["y", ar ? "أمس" : "Yesterday"], ["w", ar ? "آخر 7 أيام" : "Last 7 days"], ["m", ar ? "هذا الشهر" : "This month"]].map(([k, l]) => `<button class="chip ${p === k ? "acc" : ""}" data-sp="${k}" style="border:0;padding:9px 14px">${l}</button>`).join("");
+  let h = `<div class="sec"><h1>${ar ? "لوحة المبيعات" : "Sales dashboard"}</h1></div><div class="row" style="gap:6px">${chips}</div>`;
+  if (!d.n) return h + `<div class="card stack"><b>${ar ? "لا توجد مبيعات لهذه الفترة بعد" : "No sales for this period yet"}</b><p class="muted small">${ar ? "تظهر الأرقام بعد رفع ملف مبيعات الأمس." : "The numbers appear once yesterday's sales file is uploaded."}</p>${mgr ? `<button class="btn" data-go="salesup">${ar ? "رفع الملف" : "Upload the file"}</button>` : ""}</div>`;
+  const v = d.target ? d.sales / d.target - 1 : null, kpi = (val, lab, sub) => `<div class="kpi"><b class="num">${val}</b><span>${lab}</span>${sub ? `<span class="num" style="font-weight:700;color:var(--${sub[1]})">${sub[0]}</span>` : ""}</div>`;
+  h += `<div class="hero"><div class="muted small">${ar ? "المبيعات (ريال)" : "Sales (SAR)"} · ${fmtD(d.days[0].x)}${d.n > 1 ? " – " + fmtD(d.last) : ""}</div><div class="score num" style="font-size:3rem">${money(d.sales)}</div>
+      ${d.target ? `<div class="row small num"><span class="grow muted">${ar ? "الهدف" : "Target"} ${money(d.target)}</span><b style="color:var(--${v >= 0 ? "ok" : "bad"})">${v >= 0 ? "▲" : "▼"} ${fPct(Math.abs(v))} ${v >= 0 ? (ar ? "فوق الهدف" : "above target") : (ar ? "تحت الهدف" : "below target")}</b></div>` : ""}</div>
+    <div class="kpis">${kpi(d.units, ar ? "قطع" : "Units")}${kpi(d.inv, ar ? "فواتير" : "Receipts")}${kpi(d.inv ? money(d.sales / d.inv) : "–", ar ? "متوسط الفاتورة" : "Avg receipt")}</div><div class="kpis" style="grid-template-columns:1fr 1fr">${kpi(d.inv ? (d.units / d.inv).toFixed(2) : "–", ar ? "قطع لكل فاتورة" : "Units per receipt")}${kpi(d.n, ar ? "أيام بيع" : "Selling days")}</div>`;
+  if (d.n > 1) h += `<div class="sec"><h2>${ar ? "المبيعات يوماً بيوم" : "Sales day by day"}</h2><span class="small">${ar ? "الخط = الهدف" : "line = target"}</span></div><div class="card">${barRows(d.days.map(x => ({ l: `${DOW[parseD(x.x).getDay()]} ${fmtD(x.x)}`, v: x.s, t: x.t, txt: money(x.s) })), { tick: "Target" })}</div>`;
+  if (items.length) { const cats = {}, sizes = {}; d.files.forEach(f => (f.items || []).forEach(it => { const c = CAT(it.c), x = cats[c] = cats[c] || { q: 0, a: 0 }; x.q += it.q; x.a += it.a; if (c === "Shoes" && it.z) sizes[it.z] = (sizes[it.z] || 0) + it.q; }));
+    const n = R.all ? 999 : 10, sz = Object.entries(sizes).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1] || parseFloat(a[0]) - parseFloat(b[0])).slice(0, 8);
+    h += `<div class="sec"><h2>${ar ? "الأكثر مبيعاً" : "Top sellers"}</h2><button class="chip" id="sdAll" style="border:0">${R.all ? (ar ? "أول 10" : "Top 10") : (ar ? `الكل (${items.length})` : `All ${items.length}`)}</button></div><div class="card">${barRows(items.slice(0, n).map((x, i) => ({ rank: i + 1, l: x.n, v: x.q, txt: `${x.q} · ${money(x.a)}` })))}<p class="small muted" style="margin:8px 0 0">${ar ? "قطع · ريال" : "units · SAR"}</p></div>
+      <div class="sec"><h2>${ar ? "حسب الفئة" : "By category"}</h2></div><div class="card">${barRows(Object.entries(cats).sort((a, b) => b[1].a - a[1].a).map(([c, x]) => ({ l: ar ? CAT_AR[c] : c, v: x.a, txt: `${money(x.a)} · ${Math.round(x.a / d.sales * 100)}%`, sub: `${x.q} ${ar ? "قطعة" : "units"}` })))}</div>
+      ${sz.length ? `<div class="sec"><h2>${ar ? "أكثر مقاسات الأحذية مبيعاً" : "Best selling shoe sizes"}</h2></div><div class="card">${barRows(sz.map(([z, q2]) => ({ l: (ar ? "مقاس " : "Size ") + z, v: q2, txt: String(q2) })))}</div>` : ""}`; }
+  const ppl = {}; d.files.forEach(f => Object.entries(f.people || {}).forEach(([nm, x]) => { const t = ppl[nm] = ppl[nm] || { u: 0, s: 0 }; t.u += x.u; t.s += x.s; }));
+  const pl = Object.entries(ppl).sort((a, b) => b[1].s - a[1].s);
+  if (pl.length) h += `<div class="sec"><h2>${ar ? "مبيعات الفريق" : "Sales by team member"}</h2></div><div class="card">${barRows(pl.map(([nm, x], i) => ({ rank: i + 1, l: nm, v: x.s, txt: money(x.s), sub: `${x.u} ${ar ? "قطعة" : "units"}` })))}</div>`;
+  if (!items.length) h += `<div class="banner">${ar ? "تفاصيل الأصناف والفريق تظهر بعد رفع ملف المبيعات لهذه الأيام." : "Models, categories and team sales appear once the sales file for these days is uploaded."}</div>`;
+  return h + `<p class="small muted">${ar ? "المبيعات شاملة الضريبة وبعد المرتجعات. آخر يوم محمّل:" : "Sales include tax and are after returns. Latest day loaded:"} ${fmtD(d.last)}.${mgr ? ` <a href="#" data-go="salesup" style="color:inherit">${ar ? "رفع ملف" : "Upload a file"}</a>` : ""}</p>`;
+};
+HOOKS.sales = app => {
+  app.querySelectorAll("[data-sp]").forEach(b => b.onclick = async () => { R.p = b.dataset.sp; const [a] = salesRange(R.p); await loadMonth(ymOf(a)); render(); });
+  const al = $("#sdAll", app); if (al) al.onclick = () => { R.all = !R.all; const y = window.scrollY; render(); window.scrollTo(0, y); };
 };
 
 /* ===================== settings ===================== */
