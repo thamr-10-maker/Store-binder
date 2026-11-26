@@ -537,6 +537,8 @@ const TRY_CAP = { z1: 8, z2: 10 };
 const TRYON_DEF = { z1: ["Cloudboom Max", "Cloudmonster 3", "Cloudsurfer Max", "Cloudsurfer 2", "Cloudrunner 3", "Cloudpulse 2", "Cloud X Tempo Pro", "Cloud X 5"].map(item => ({ fam: "Wall 1", item, sys: "" })),
   z2: ["Cloud 6", "Cloud 6 Coast", "Cloud 6 Versa", "Cloudtilt", "Cloudswift 4", "Cloudnova 2", "Cloudzone 99", "Cloud Muse", "THE ROGER Advantage", "THE ROGER Pro 3"].map(item => ({ fam: "Wall 2", item, sys: "" })) };
 const tryonCfg = () => { const c = S.cfg || {}, t = c.tryonV === 2 && c.tryon ? c.tryon : TRYON_DEF; return { z1: (t.z1 || []).slice(0, TRY_CAP.z1), z2: (t.z2 || []).slice(0, TRY_CAP.z2) }; };
+/* "Closing Checked By": the name typed at closing, or else the people who counted Wall 1 and Wall 2 */
+const tryonChecked = d => (d.checkedBy ? nameId(d.checkedBy) : [...new Set(["z1", "z2"].map(z => d["by_" + z]).filter(Boolean))].map(id => shortName(id)).join(" / "));
 function tryonFields() {                     // one question per try-on model
   const t = tryonCfg(); const out = [];
   ["z1", "z2"].forEach(z => (t[z] || []).forEach((it, i) => { if (it && it.item) out.push({ k: `${z}_${i}`, g: z, t: "num", q: q(`${it.item}: how many pairs are on the floor?`, `${it.item}: كم زوجاً موجود في الصالة؟`), hint: it.sys !== "" && it.sys != null ? q(`System quantity: ${it.sys}`, `كمية النظام: ${it.sys}`) : null }); }));
@@ -674,7 +676,7 @@ const SHEETS = {
     (d.team || []).slice(0, 8).forEach((m, i) => [shortName(m.who), m.timing, m.ysale && money(m.ysale), m.ttarget && money(m.ttarget), m.mtd].forEach((v, ci) => tx(c, v, xs[ci], ty[i], xs[ci + 1], ty[i + 1], { max: 7, bold: ci === 0 })));
   } }]; },
   tryon(r) { const d = r.data, t = tryonCfg(); return [{ bg: "tryon", draw(c) {
-    tx(c, fmtD(r.date), 366, 88, 508, 105, { align: "l", max: 9 }); tx(c, nameId(d.checkedBy), 336, 122, 508, 139, { max: 8 });
+    tx(c, fmtD(r.date), 366, 88, 508, 105, { align: "l", max: 9 }); tx(c, tryonChecked(d), 336, 122, 508, 139, { max: 8 });
     const zones = [["z1", 173, 307.6, 8, 307.6], ["z2", 341.3, 509.6, 10, 509.6]]; let gs = 0, gp = 0, anyS = false, anyP = false;
     zones.forEach(([z, a, b, n, ty]) => { const ys = lin(a, b, n); let ss = 0, sp = 0, hs = false, hp = false;
       (t[z] || []).slice(0, n).forEach((it, i) => { if (!it || !it.item) return; const p = d[`${z}_${i}`];
@@ -800,7 +802,7 @@ function groupsOf(id) { if (FORMS[id].zones) return ["z1", "z2"].filter(z => (tr
 function taskDone(id, date, group) {
   const f = FORMS[id], rid2 = runId(id, date), [a, b] = periodOf(id, date);
   if (f.kind === "check") { const r = S.recs.get(rid2); if (!r) return false; if (!group) return !!r.done; return f.items.filter(it => it.g === group).every(it => r.data.items && r.data.items[it.id]); }
-  if (f.zones) { const r = S.recs.get(rid2); if (!r) return false; const keys = tryonFields().filter(x => x.g && (!group || x.g === group)).map(x => x.k); return keys.every(k => r.data[k] !== "" && r.data[k] != null) && (!!group || !!r.data.checkedBy); }
+  if (f.zones) { const r = S.recs.get(rid2); if (!r) return false; const keys = tryonFields().filter(x => x.g && (!group || x.g === group)).map(x => x.k); return keys.every(k => r.data[k] !== "" && r.data[k] != null) && (!!group || !!r.data.checkedBy || groupsOf(id).some(g => r.data["by_" + g])); }
   if (rid2) return S.recs.has(rid2);
   return recsOf(id, a, b).length > 0;
 }
@@ -820,7 +822,7 @@ function tasksFor(date) {
       const late = !done && (date < now || sd < date || (date === now && hm > due));
       return { key, id, group, date, due, who, done, late, carried: sd < date, title: L(f.title) + (group ? " · " + groupLabel(id, group) : splitable(f) && isSplit(id, date) ? " · " + finalLabel(f) : "") }; };
     if (splitable(f) && isSplit(id, date)) groupsOf(id).forEach(g => out.push(mk(`${id}:${g}`, g)));
-    out.push(mk(id, null));
+    if (!(f.zones && isSplit(id, date))) out.push(mk(id, null));      // a split count has no extra final task: the people who counted the walls are the checkers
   }
   return out.sort((a, b) => a.due.localeCompare(b.due));
 }
@@ -997,7 +999,8 @@ function finishForm() {
   const f = W.f, d = W.data;
   W.fields.forEach(fd => { if (fd.remember && d[fd.k]) { try { localStorage.setItem(rememberKey(f.id, fd.k), d[fd.k]); } catch (e) {} } });
   const rec = W.existing ? Object.assign({}, W.existing, { data: d, editedBy: ME, editedAt: Date.now() }) : { form: f.id, date: W.date, at: Date.now(), by: ME, data: d };
-  if (f.zones) { const part = {}; W.fields.forEach(fd => { if (d[fd.k] !== "" && d[fd.k] != null) part[fd.k] = d[fd.k]; }); Data.patchRec(W.recId, { form: f.id, date: W.date, at: Date.now(), by: ME, data: {} }, { data: part }); }
+  if (f.zones) { const part = {}; W.fields.forEach(fd => { if (d[fd.k] !== "" && d[fd.k] != null) part[fd.k] = d[fd.k]; }); if (W.group) part["by_" + W.group] = ME;      /* who counted this wall: printed as "Closing Checked By" */
+    Data.patchRec(W.recId, { form: f.id, date: W.date, at: Date.now(), by: ME, data: {} }, { data: part }); }
   else Data.saveRec(W.recId, rec);
   toast(T("saved"));
   const offer = f.id === "stockcheck" && cfgForm("discrepancy").on !== false && (d.items || []).some(it => { const fin = it.recount !== "" && it.recount != null ? it.recount : it.phy; return num(fin) !== null && num(it.sys) !== null && num(fin) !== num(it.sys); });
