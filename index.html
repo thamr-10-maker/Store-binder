@@ -804,6 +804,8 @@ function taskDone(id, date, group) {
   if (rid2) return S.recs.has(rid2);
   return recsOf(id, a, b).length > 0;
 }
+/* when a form is split into parts, the task without a part name is only the last step: the final check or the sign-off */
+const finalLabel = f => L(f.zones ? q("Final check", "المراجعة النهائية") : q("Sign-off", "التوقيع"));
 function tasksFor(date) {
   const out = [], p = planOf(date), now = today(), hm = nowHM();
   for (const id of formsOn()) {
@@ -812,11 +814,11 @@ function tasksFor(date) {
     if (p.skip && p.skip[id]) continue;
     const c = cfgForm(id), f = FORMS[id];
     const mk = (key, group) => { const ov = (p.tasks && p.tasks[key]) || {}; const due = ov.due || (group && p.tasks && p.tasks[id] && p.tasks[id].due) || c.due || "23:59";
-      const mainWho = p.tasks && p.tasks[id] && "who" in p.tasks[id] ? p.tasks[id].who : defaultWho(id, date);
+      const mainWho = p.tasks && p.tasks[id] && "who" in p.tasks[id] ? p.tasks[id].who : f.zones && isSplit(id, date) ? (roleWho("dsm", date) || roleWho("sm", date) || defaultWho(id, date)) : defaultWho(id, date);      // the final check of a split count goes to the closing manager
       const who = "who" in ov ? ov.who : group ? (groupWho(id, group, date) || mainWho) : mainWho;
       const done = taskDone(id, date, group);
       const late = !done && (date < now || sd < date || (date === now && hm > due));
-      return { key, id, group, date, due, who, done, late, carried: sd < date, title: L(f.title) + (group ? " · " + groupLabel(id, group) : "") }; };
+      return { key, id, group, date, due, who, done, late, carried: sd < date, title: L(f.title) + (group ? " · " + groupLabel(id, group) : splitable(f) && isSplit(id, date) ? " · " + finalLabel(f) : "") }; };
     if (splitable(f) && isSplit(id, date)) groupsOf(id).forEach(g => out.push(mk(`${id}:${g}`, g)));
     out.push(mk(id, null));
   }
@@ -863,7 +865,8 @@ function startForm(id, opt = {}) {
     W.fields = fieldsOf(f);
     if (W.group) W.fields = W.fields.filter(x => x.g === W.group);
     W.fields.forEach(fd => { if (!(fd.k in W.data)) W.data[fd.k] = defVal(f, fd, W.data); });
-    if (f.zones && ex) { const k = W.fields.findIndex(x => x.g && (W.data[x.k] === "" || W.data[x.k] == null)); W.i = k < 0 ? Math.max(0, W.fields.length - 1) : k; }
+    if (f.zones && !W.group && !opt.editId && isSplit(id, date)) { W.final = true; W.fields = W.fields.filter(x => !x.g || W.data[x.k] === "" || W.data[x.k] == null); W.i = 0; }      // the final check asks only what the parts left open
+    else if (f.zones && ex) { const k = W.fields.findIndex(x => x.g && (W.data[x.k] === "" || W.data[x.k] == null)); W.i = k < 0 ? Math.max(0, W.fields.length - 1) : k; }
   }
   renderWiz();
 }
@@ -947,7 +950,7 @@ function renderField() {
       if (sug.length) body += `<div class="stack" style="gap:8px"><span class="muted small">${T("usedBefore")}</span><div class="row">${sug.map(v => `<button class="chip acc" data-sug="${esc(v)}" style="border:0;padding:10px 14px;font-size:1rem;white-space:normal;text-align:start">${esc(v)}</button>`).join("")}</div></div>`; }
     if (fd.t === "long" || fd.t === "text") body += `<p class="muted small">🎤 ${T("voiceTip")}</p>`;
   }
-  const el = wizShell(L(f.title) + (W.group ? " · " + groupLabel(f.id, W.group) : ""), W.i / n, body, `<button class="btn alt" id="wzBack" ${W.i === 0 ? "disabled" : ""}>${T("back")}</button><button class="btn" id="wzNext">${W.i === n - 1 ? T("finish") : (fd.opt && (val === "" || val == null || (Array.isArray(val) && !val.length)) ? T("skip") : T("next"))}</button>`);
+  const el = wizShell(L(f.title) + (W.group ? " · " + groupLabel(f.id, W.group) : W.final ? " · " + finalLabel(f) : ""), W.i / n, body, `<button class="btn alt" id="wzBack" ${W.i === 0 ? "disabled" : ""}>${T("back")}</button><button class="btn" id="wzNext">${W.i === n - 1 ? T("finish") : (fd.opt && (val === "" || val == null || (Array.isArray(val) && !val.length)) ? T("skip") : T("next"))}</button>`);
   const inp = $(`#wz_${fd.k}`, el);
   if (inp) { inp.oninput = () => { W.data[fd.k] = inp.value; const nb = $("#wzNext", el); if (W.i < n - 1) nb.textContent = fd.opt && !inp.value ? T("skip") : T("next"); }; if (fd.t !== "time" && fd.t !== "date") setTimeout(() => { try { inp.focus(); const l = inp.value.length; inp.setSelectionRange && inp.type !== "time" && inp.setSelectionRange(l, l); } catch (e) {} }, 60);
     if (fd.t !== "long") inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#wzNext", el).click(); } }; }
