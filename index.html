@@ -567,7 +567,7 @@ function tx(c, s, x0, y0, x1, y1, op = {}) {
     if (lines.length * size * lead <= h - 0.5 && lines.every(l => c.measureText(l).width <= w + 0.5)) break;
   }
   if (size < min) { size = min; lines = wrap(size); const fit = Math.max(1, Math.floor(h / (size * lead))); if (lines.length > fit) { lines = lines.slice(0, fit); lines[fit - 1] = lines[fit - 1].replace(/.{0,3}$/, "…"); } }
-  c.font = font(size); c.fillStyle = "#101010"; c.textBaseline = "middle"; c.direction = "ltr";
+  c.font = font(size); c.fillStyle = op.color || "#101010"; c.textBaseline = "middle"; c.direction = "ltr";
   const al = op.align || "c"; c.textAlign = al === "l" ? "left" : al === "r" ? "right" : "center";
   const x = al === "l" ? x0 + pad : al === "r" ? x1 - pad : (x0 + x1) / 2;
   const total = lines.length * size * lead; let y = op.top ? y0 + 1 + size * lead / 2 : (y0 + y1) / 2 - total / 2 + size * lead / 2;
@@ -725,7 +725,7 @@ const SHEETS = {
 function pagesFor(id, from, to, blank) {
   const f = FORMS[id];
   if (id === "cover" || id === "index") return SHEETS[id]();
-  if (blank) { if (GRID[id] && f.kind === "log") return logPages(id, [], { ym: ymOf(from) }); return [{ bg: f.printAs || id, land: ["incident", "stockcheck", "discrepancy"].includes(id), draw() {} }]; }
+  if (blank) { if (GRID[id] && f.kind === "log") return logPages(id, [], { ym: ymOf(from) }); return [{ bg: f.printAs || id, land: ["incident", "stockcheck", "discrepancy", "safe"].includes(id), draw() {} }]; }
   if (f.printAs === "openclose") { const out = []; for (let d = from; d <= to; d = addDays(d, 1)) if (S.recs.get("opening_" + d) || S.recs.get("closing_" + d)) out.push(...SHEETS.openclose(d)); return out; }
   if (id === "smweekly") { const out = []; const seen = new Set(); recsOf(id, addDays(from, -31), to).forEach(r => { const ym = r.wk ? r.wk.slice(0, 7) : r.ym; if (ym >= ymOf(from) && ym <= ymOf(to) && !seen.has(ym)) { seen.add(ym); out.push(...SHEETS.smweekly(ym)); } }); return out; }
   const recs = recsOf(id, from, to);
@@ -854,6 +854,7 @@ function startForm(id, opt = {}) {
   const f = FORMS[id], date = opt.date || today();
   if (id === "dsr" && !opt.editId && !opt.plain) return go("close", { date });
   if (id === "salesup") return go("salesup");
+  if (id === "safe") return go("safe", { date });
   if (!S.canWrite) { toast(T("readOnly")); return; }
   W = { id, f, date, group: opt.group || null, i: 0, data: {}, editId: opt.editId || null, sub: null };
   if (f.kind === "check") {
@@ -1310,7 +1311,7 @@ HOOKS.review = app => {
 /* ---- more ---- */
 VIEWS.more = (me, mgr) => {
   const link = (v, label, sub) => `<button class="task" data-go="${v}"><span class="grow"><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</span>${ICON.chev}</button>`;
-  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("close", LANG === "ar" ? "إغلاق اليوم" : "Close the day", LANG === "ar" ? "تقارير Z، الشبكة، النقد، التقرير والملفات" : "Z reports, card machine, cash, the report and the online files") + link("sales", LANG === "ar" ? "لوحة المبيعات" : "Sales dashboard", LANG === "ar" ? "المبيعات، الأكثر مبيعاً، الفريق" : "Sales, top sellers, team") + link("salesup", LANG === "ar" ? "ملف مبيعات الأمس" : "Yesterday's sales file", LANG === "ar" ? "رفع يومي، مبيعات كل بائع، وأصناف الجرد" : "Daily upload, sales per person, and the stock check items") + link("dsr", LANG === "ar" ? "تقرير المبيعات اليومي" : "Daily Sales Report", LANG === "ar" ? "أدخل أرقام الإغلاق واحصل على الملخص" : "Enter the closing figures and get the summary") + link("budget", LANG === "ar" ? "الأهداف اليومية" : "Budget", LANG === "ar" ? "ارفع أهداف الشهر مسبقاً" : "Load the month's daily budget in advance") + link("requests", LANG === "ar" ? "طلب التزويد" : "Replenishment request", LANG === "ar" ? "ما طلبه العملاء ولم يتوفر" : "What customers asked for and we did not have") + link("zones", LANG === "ar" ? "إعداد المناطق" : "Zone set-up", LANG === "ar" ? "عدد المناطق وأسماؤها" : "How many zones the store has, and their names") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota")}
+  return `<h1>${T("more")}</h1><div class="stack">${mgr ? link("audit", T("audit"), LANG === "ar" ? "31 سؤالاً ودرجة فورية" : "The 31 audit questions and an instant score") + link("binder", T("binder"), LANG === "ar" ? "هل كل شيء مطبوع ومحفوظ؟" : "Is everything printed and filed?") + link("review", T("review"), LANG === "ar" ? "تأكيد المدير الأسبوعي" : "The manager's weekly sign-off") + link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota", LANG === "ar" ? "صباحي ومسائي، من الأحد إلى السبت" : "AM and PM shifts, Sunday to Saturday") + link("safe", LANG === "ar" ? "محتوى الخزنة اليومي" : "Daily safe content", LANG === "ar" ? "عدّ النقد، المفاتيح، التسليم، ثم الطباعة" : "Cash count, keys, handover, then print") + link("close", LANG === "ar" ? "إغلاق اليوم" : "Close the day", LANG === "ar" ? "تقارير Z، الشبكة، النقد، التقرير والملفات" : "Z reports, card machine, cash, the report and the online files") + link("sales", LANG === "ar" ? "لوحة المبيعات" : "Sales dashboard", LANG === "ar" ? "المبيعات، الأكثر مبيعاً، الفريق" : "Sales, top sellers, team") + link("salesup", LANG === "ar" ? "ملف مبيعات الأمس" : "Yesterday's sales file", LANG === "ar" ? "رفع يومي، مبيعات كل بائع، وأصناف الجرد" : "Daily upload, sales per person, and the stock check items") + link("dsr", LANG === "ar" ? "تقرير المبيعات اليومي" : "Daily Sales Report", LANG === "ar" ? "أدخل أرقام الإغلاق واحصل على الملخص" : "Enter the closing figures and get the summary") + link("budget", LANG === "ar" ? "الأهداف اليومية" : "Budget", LANG === "ar" ? "ارفع أهداف الشهر مسبقاً" : "Load the month's daily budget in advance") + link("requests", LANG === "ar" ? "طلب التزويد" : "Replenishment request", LANG === "ar" ? "ما طلبه العملاء ولم يتوفر" : "What customers asked for and we did not have") + link("zones", LANG === "ar" ? "إعداد المناطق" : "Zone set-up", LANG === "ar" ? "عدد المناطق وأسماؤها" : "How many zones the store has, and their names") + link("records", T("records")) + link("config", T("config"), LANG === "ar" ? "المتجر، الفريق، الجدول" : "Store, team, schedule") : link("rota", LANG === "ar" ? "جدول الدوام الأسبوعي" : "Weekly rota")}
     ${mgr && !REAL ? `<div class="card stack"><b>${T("viewAs")}</b><select class="in" id="mrAs"><option value="">—</option>${staffList().filter(s => s.id !== ME).map(s => `<option value="${esc(s.id)}">${esc(s.short || s.name)} · ${esc(L(ROLES[s.role]))}</option>`).join("")}</select></div>` : ""}
     <button class="btn alt" id="mrPin">${LANG === "ar" ? "تغيير الرقم السري" : "Change my PIN"}</button><button class="btn alt" id="mrOut">${T("signOut")}</button></div>`;
 };
@@ -2039,6 +2040,85 @@ VIEWS.sales = (me, mgr) => {
 HOOKS.sales = app => {
   app.querySelectorAll("[data-sp]").forEach(b => b.onclick = async () => { R.p = b.dataset.sp; const [a] = salesRange(R.p); await loadMonth(ymOf(a)); render(); });
   const al = $("#sdAll", app); if (al) al.onclick = () => { R.all = !R.all; const y = window.scrollY; render(); window.scrollTo(0, y); };
+};
+
+/* ===================== Daily Safe Content & Handover Document: filled on the phone, printed on the company form ===================== */
+FORMS.safe = { id: "safe", letter: "SC", kind: "sheet", single: "day", mgr: true, title: q("Daily Safe Content & Handover", "محتوى الخزنة اليومي والتسليم"), sched: { freq: "daily", due: "23:50", who: "dsm" }, fields: [] };
+FORM_ORDER.push("safe");
+const DENOMS = [500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.25, 0.1];
+const SAFE_G = [["s", q("Safe cash amount", "النقد في الخزنة")], ["p1", q("Cash float, POS 1", "عهدة الكاشير 1")], ["p2", q("Cash float, POS 2", "عهدة الكاشير 2")], ["sp", q("Spot check (sales)", "فحص مفاجئ (المبيعات)")]];
+const SAFE_KEYS = ["POS Drawer Keys", "Shop Keys", "Safe Keys", "Emergency Door Key", "IT Cabinet / Server Key", "Lost & Found Amount", "Lost and Found Items", "Basement Storage Key"];
+const safeRec = date => S.recs.get("safe_" + date);
+/* the cash sales of each day since the last bank deposit, from Close the day */
+function safeBank(date) { const c = closeCfg(); let start = c.openDate; for (let x = addDays(date, -1), i = 0; x >= c.openDate && i < 60; x = addDays(x, -1), i++) { const r = dsrRec(x); if (r && nz(r.data.deposit) > 0) { start = addDays(x, 1); break; } }
+  if (start > date) start = date; const out = []; for (let x = start; x <= date && out.length < 30; x = addDays(x, 1)) { const r = dsrRec(x); out.push({ d: x, v: r && r.data.pa_cash !== "" && r.data.pa_cash != null ? String(nz(r.data.pa_cash)) : "" }); } return out; }
+function safeStart(date) {
+  const ex = safeRec(date); if (ex) return clone(ex.data);
+  let prev = null; for (let i = 1; i <= 14 && !prev; i++) prev = safeRec(addDays(date, -i));
+  const p = prev ? prev.data : {}, d = { q: { s: clone((p.q || {}).s || {}), p1: clone((p.q || {}).p1 || {}), p2: clone((p.q || {}).p2 || {}), sp: {} }, bank: safeBank(date), float: p.float ?? "10000", excess: "", petty: p.petty ?? "5000", approved: p.approved ?? "", pending: p.pending ?? "", keys: clone(p.keys || {}), kx: clone(p.kx || [{ n: "", v: "" }, { n: "", v: "" }]), remarks: "", ver: "", hand: "", take: "" };
+  return d;
+}
+function safeCalc(d) { const g = k => DENOMS.reduce((a, den) => a + den * nz((d.q[k] || {})[den]), 0), t = { s: g("s"), p1: g("p1"), p2: g("p2"), sp: g("sp") };
+  t.cegid = (d.bank || []).reduce((a, b) => a + nz(b.v), 0); t.system = nz(d.float) + t.cegid; t.physical = t.s + t.p1 + t.p2; t.total = t.physical + nz(d.excess); t.diff = +(t.total - t.system).toFixed(2); t.remaining = nz(d.petty) - nz(d.approved) - nz(d.pending);
+  t.keys = SAFE_KEYS.reduce((a, k, i) => a + nz((d.keys || {})[i]), 0) + (d.kx || []).reduce((a, x) => a + nz(x.v), 0); return t; }
+let SD = null;
+VIEWS.safe = () => {
+  const ar = LANG === "ar", date = R.date || today(); if (!SD || SD.date !== date) SD = { date, d: safeStart(date) };
+  const d = SD.d, t = safeCalc(d), saved = !!safeRec(date), m2 = v => v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const grp = ([k, lab], i) => `<details class="card" ${i === 0 ? "open" : ""}><summary><span style="display:inline-flex;width:calc(100% - 24px);justify-content:space-between"><span>${L(lab)}</span><b class="num" data-gt="${k}">${m2(t[k])}</b></span></summary><table class="t num" style="margin-top:8px"><tr><th>${ar ? "الفئة" : "Note / coin"}</th><th style="width:34%;text-align:center">${ar ? "العدد" : "Qty"}</th><th style="text-align:end">${ar ? "المبلغ" : "Amount"}</th></tr>
+    ${DENOMS.map(den => `<tr><td>${den}</td><td><input class="in num" style="text-align:center;padding:7px" inputmode="numeric" data-sq="${k}:${den}" aria-label="${L(lab)} ${den}" value="${esc((d.q[k] || {})[den] ?? "")}"></td><td style="text-align:end" data-ga="${k}:${den}">${m2(den * nz((d.q[k] || {})[den]))}</td></tr>`).join("")}</table></details>`;
+  const sel = (k, lab) => `<div class="field grow" style="min-width:140px"><label for="sf_${k}">${lab}</label><select class="in" id="sf_${k}" data-sf="${k}"><option value="">–</option>${staffList().map(s => `<option value="${esc(s.id)}" ${d[k] === s.id ? "selected" : ""}>${esc(shortName(s.id))}</option>`).join("")}</select></div>`;
+  const line = (lab, id, bold) => `<div class="row"><span class="grow ${bold ? "" : "muted"}">${lab}</span><b class="num" id="${id}"></b></div>`;
+  return `<div class="sec"><h1>${ar ? "محتوى الخزنة اليومي" : "Daily safe content"}</h1><span class="chip ${saved ? "ok" : "warn"}">${saved ? (ar ? "محفوظ" : "Saved") : (ar ? "غير محفوظ" : "Not saved")}</span></div>
+    <div class="row"><button class="btn sm alt" id="sfPrev">←</button><input class="in grow num" type="date" id="sfDate" value="${date}" style="text-align:center"><button class="btn sm alt" id="sfNext" ${date >= today() ? "disabled" : ""}>→</button></div>
+    <p class="small muted">${ar ? "الأرقام تبدأ من آخر تقرير محفوظ. عدّل ما تغيّر فقط." : "The numbers start from the last saved report. Change only what is different today."}</p>
+    ${SAFE_G.map(grp).join("")}
+    <details class="card"><summary><span style="display:inline-flex;width:calc(100% - 24px);justify-content:space-between"><span>${ar ? "تفاصيل الإيداع اليومية" : "Daily banking details"}</span><b class="num" id="sfCeg"></b></span></summary><p class="small muted" style="margin:8px 0">${ar ? "المبيعات النقدية لكل يوم منذ آخر إيداع (حتى 30 يوماً). تُملأ من إغلاق اليوم." : "Cash sales of each day since the last deposit (up to 30 days). Filled from Close the day."}</p>
+      <table class="t num">${d.bank.map((b, i) => `<tr><td>${fmtD(b.d)}</td><td style="width:45%"><input class="in num" style="text-align:end;padding:7px" inputmode="decimal" data-sb="${i}" aria-label="${fmtD(b.d)}" value="${esc(b.v)}"></td></tr>`).join("")}</table><button class="btn sm alt" id="sfBank" style="margin-top:8px">${ar ? "تحديث من إغلاق اليوم" : "Refresh from Close the day"}</button></details>
+    <div class="card stack"><b>${ar ? "المطابقة" : "Cash check"}</b><div class="row"><div class="field grow"><label for="sf_float">${ar ? "العهدة (5000+5000)" : "Float cash (5000+5000)"}</label><input class="in num" id="sf_float" inputmode="decimal" data-sv="float" value="${esc(d.float)}"></div><div class="field grow"><label for="sf_excess">${ar ? "زيادة داخل الخزنة" : "Excess inside the safe"}</label><input class="in num" id="sf_excess" inputmode="decimal" data-sv="excess" value="${esc(d.excess)}"></div></div>
+      ${line(ar ? "مبيعات النظام النقدية" : "Cegid sales", "sfC1")}${line(ar ? "مبلغ النظام" : "System amount", "sfC2", 1)}${line(ar ? "المبلغ الفعلي" : "Physical amount", "sfC3", 1)}${line(ar ? "الفرق" : "Difference", "sfC4", 1)}</div>
+    <div class="card stack"><b>${ar ? "المصروفات النثرية" : "Petty cash (SIFI card)"}</b><div class="row">${[["petty", ar ? "المبلغ" : "Card amount"], ["approved", ar ? "فواتير معتمدة" : "Bills approved"], ["pending", ar ? "فواتير معلقة" : "Bills pending"]].map(([k, l]) => `<div class="field grow" style="min-width:90px"><label for="sf_${k}">${l}</label><input class="in num" id="sf_${k}" inputmode="decimal" data-sv="${k}" value="${esc(d[k])}"></div>`).join("")}</div>${line(ar ? "المتبقي" : "Remaining amount", "sfC5", 1)}</div>
+    <details class="card"><summary><span style="display:inline-flex;width:calc(100% - 24px);justify-content:space-between"><span>${ar ? "المفاتيح والمفقودات" : "Keys and lost & found"}</span><b class="num" id="sfKt"></b></span></summary><div class="stack" style="margin-top:10px;gap:8px">${SAFE_KEYS.map((k, i) => `<div class="row" style="flex-wrap:nowrap"><span class="grow">${k}</span><input class="in num" style="width:84px;text-align:center;padding:7px" inputmode="decimal" data-sk2="${i}" aria-label="${k}" value="${esc((d.keys || {})[i] ?? "")}"></div>`).join("")}
+      ${(d.kx || []).map((x, i) => `<div class="row" style="flex-wrap:nowrap"><input class="in grow" data-kxn="${i}" placeholder="${ar ? "بند آخر" : "Another item"}" value="${esc(x.n)}"><input class="in num" style="width:84px;text-align:center;padding:7px" inputmode="decimal" data-kxv="${i}" aria-label="value" value="${esc(x.v)}"></div>`).join("")}</div></details>
+    <div class="field"><label for="sf_rem">${ar ? "ملاحظات" : "Remarks"}</label><textarea class="in" id="sf_rem" rows="2" data-sv="remarks">${esc(d.remarks)}</textarea></div>
+    <div class="card stack"><b>${ar ? "التسليم والاستلام" : "Handover and takeover"}</b><p class="small muted">${ar ? "أعدّه (إغلاق اليوم):" : "Prepared by (day end closure):"} <b>${esc(shortName(ME))}</b>. ${ar ? "التوقيعات بالقلم بعد الطباعة." : "Signatures are by pen after printing."}</p><div class="row">${sel("ver", ar ? "تحقق منه (فتح اليوم)" : "Verified by (day opening)")}${sel("hand", ar ? "سلّم (نهاية الوردية الأولى)" : "Handover by (end of first shift)")}${sel("take", ar ? "استلم (الوردية الثانية)" : "Takeover by (second shift)")}</div></div>
+    <p class="small" id="sfMsg" style="color:var(--bad);margin:0"></p><div class="row"><button class="btn grow" id="sfSave">${ar ? "حفظ" : "Save"}</button><button class="btn alt grow" id="sfPrint">${ar ? "حفظ وطباعة" : "Save and print"}</button></div>`;
+};
+HOOKS.safe = app => {
+  const date = R.date || today(), d = SD.d, m2 = v => v.toLocaleString("en-US", { maximumFractionDigits: 2 }), cleanN = v => (v.trim() === "" ? "" : (num(v) === null ? "" : String(num(v))));
+  const live = () => { const t = safeCalc(d); app.querySelectorAll("[data-gt]").forEach(e => { e.textContent = m2(t[e.dataset.gt]); }); app.querySelectorAll("[data-ga]").forEach(e => { const [k, den] = e.dataset.ga.split(":"); e.textContent = m2(den * nz((d.q[k] || {})[den])); });
+    $("#sfCeg", app).textContent = m2(t.cegid); $("#sfC1", app).textContent = m2(t.cegid); $("#sfC2", app).textContent = m2(t.system); $("#sfC3", app).textContent = m2(t.total); const c4 = $("#sfC4", app); c4.textContent = t.diff === 0 ? "✓ 0" : (t.diff > 0 ? "+" : "") + m2(t.diff); c4.style.color = `var(--${t.diff === 0 ? "ok" : "bad"})`; $("#sfC5", app).textContent = m2(t.remaining); $("#sfKt", app).textContent = m2(t.keys); };
+  app.querySelectorAll("[data-sq]").forEach(i => i.oninput = () => { const [k, den] = i.dataset.sq.split(":"); (d.q[k] = d.q[k] || {})[den] = cleanN(i.value); live(); });
+  app.querySelectorAll("[data-sb]").forEach(i => i.oninput = () => { d.bank[+i.dataset.sb].v = cleanN(i.value); live(); });
+  app.querySelectorAll("[data-sv]").forEach(i => i.oninput = () => { d[i.dataset.sv] = i.tagName === "TEXTAREA" ? i.value : cleanN(i.value); live(); });
+  app.querySelectorAll("[data-sk2]").forEach(i => i.oninput = () => { (d.keys = d.keys || {})[i.dataset.sk2] = cleanN(i.value); live(); });
+  app.querySelectorAll("[data-kxn]").forEach(i => i.oninput = () => { d.kx[+i.dataset.kxn].n = i.value; }); app.querySelectorAll("[data-kxv]").forEach(i => i.oninput = () => { d.kx[+i.dataset.kxv].v = cleanN(i.value); live(); });
+  app.querySelectorAll("[data-sf]").forEach(i => i.onchange = () => { d[i.dataset.sf] = i.value; });
+  $("#sfBank", app).onclick = () => { d.bank = safeBank(date); render(); };
+  const move = async nd => { SD = null; await loadMonth(ymOf(nd)); await loadMonth(ymOf(addDays(nd, -14))); go("safe", { date: nd }); };
+  $("#sfPrev", app).onclick = () => move(addDays(date, -1)); $("#sfNext", app).onclick = () => move(addDays(date, 1)); $("#sfDate", app).onchange = e => { if (e.target.value) move(e.target.value); };
+  const save = () => { const ex = safeRec(date); d.remarks = (d.remarks || "").trim(); Data.saveRec("safe_" + date, ex ? Object.assign({}, ex, { data: clone(d), editedBy: ME, editedAt: Date.now() }) : { form: "safe", date, at: Date.now(), by: ME, data: clone(d) }); toast(T("saved")); };
+  $("#sfSave", app).onclick = () => { save(); render(); }; $("#sfPrint", app).onclick = () => { save(); render(); preview("safe", date, date); };
+  live();
+};
+/* the printed page: values typed onto the company's own form */
+SHEETS.safe = r => { const d = r.data, t = safeCalc(d), n2 = v => (Math.abs(v) < 0.005 ? "-" : v.toLocaleString("en-US", { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 })), us = x => { const [y, m, dd] = x.split("-"); return `${m}/${dd}/${y}`; };
+  return [{ bg: "safe", land: true, draw(c) {
+    tx(c, parseD(r.date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }), 703.3, 81, 815.4, 97, { max: 7.5, bold: true });
+    const ys = lin(116.6, 233.6, 12), QX = { s: [134.1, 183.6, 229.5], p1: [301.3, 338, 395], p2: [496.4, 549.1, 604.9], sp: [703.3, 754.4, 815.4] };
+    Object.entries(QX).forEach(([k, [a, b, e]]) => { DENOMS.forEach((den, i) => { const qv = nz((d.q[k] || {})[den]); tx(c, String(qv), a, ys[i], b, ys[i + 1], { max: 6.5 }); tx(c, n2(den * qv), b, ys[i], e, ys[i + 1], { max: 6.5, align: "r" }); }); tx(c, n2(t[k]), b, 233.6, e, 243.2, { max: 6.5, align: "r", bold: true }); });
+    const by = lin(272.5, 370, 10), BX = [[26.3, 84.2, 134], [134.1, 183.6, 229.5], [229.5, 281.6, 338]], sums = [0, 0, 0];
+    BX.forEach(([a, b, e], col) => { for (let i = 0; i < 10; i++) { const it = (d.bank || [])[col * 10 + i]; if (!it) continue; tx(c, us(it.d), a, by[i], b, by[i + 1], { max: 6.3 }); tx(c, n2(nz(it.v)), b, by[i], e, by[i + 1], { max: 6.3, align: "r" }); sums[col] += nz(it.v); } tx(c, n2(sums[col]), b, 370, e, 379.7, { max: 6.3, align: "r", bold: true, color: "#fff" }); });
+    const L0 = 549.2, L1 = 604.9, row = i => [253.1 + 9.74 * i, 253.1 + 9.74 * (i + 1)], put = (i, v, o = {}) => { const [a, b] = row(i); tx(c, n2(v), L0, a, L1, b, Object.assign({ max: 6.5, align: "r" }, o)); };
+    put(0, nz(d.float)); put(1, t.cegid); put(2, t.system, { bold: true, color: "#fff" }); put(3, t.physical); put(4, nz(d.excess)); put(5, t.total, { bold: true, color: "#fff" }); put(6, t.diff, { bold: true, color: t.diff ? "#b3261e" : "#101010" });
+    put(8, nz(d.petty)); put(9, nz(d.approved)); put(10, nz(d.pending)); put(11, t.remaining, { bold: true, color: "#fff" });
+    SAFE_KEYS.forEach((k, i) => tx(c, String(nz((d.keys || {})[i])), 754.5, 262.8 + 9.74 * i, 815.4, 262.8 + 9.74 * (i + 1), { max: 6.5 }));
+    (d.kx || []).forEach((x, i) => { if (!x.n && x.v === "") return; const y = 262.8 + 9.74 * (8 + i); tx(c, x.n, 666, y, 754.4, y + 9.74, { max: 6.3 }); tx(c, String(nz(x.v)), 754.5, y, 815.4, y + 9.74, { max: 6.5 }); });
+    tx(c, n2(t.keys), 754.5, 360.3, 815.4, 369.9, { max: 6.5, align: "r", bold: true });
+    tx(c, d.remarks, 90, 384, 812, 440, { max: 8, align: "l" });
+    const who = [[r.by, 84.3, 229.5, true], [d.ver, 281.6, 395], [d.hand, 462.6, 604.9], [d.take, 666, 815.4]];
+    who.forEach(([id, a, b, stamp]) => { if (!id) return; tx(c, (staff(id) || {}).name || "", a, 457.7, b, 471.9, { max: 7.5 }); tx(c, id, a, 471.9, b, 486, { max: 7.5 }); if (stamp) tx(c, `${fmtD(r.date)}  ${new Date(r.editedAt || r.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`, a, 507, b, 521.5, { max: 7.5 }); });
+  } }];
 };
 
 /* ===================== settings ===================== */
