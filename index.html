@@ -1959,11 +1959,11 @@ async function saveCatalog(cat) { CATALOG = cat; catLoading = Promise.resolve(ca
 function parseAvail(sheets, old, asof) {
   if (sheets.length && !Array.isArray(sheets[0][0])) sheets = [sheets];
   for (const rows of sheets) { const hi = rows.findIndex(r => r.some(c => /^barcode$/i.test(String(c).trim())) && r.some(c => /^physical$/i.test(String(c).trim()))); if (hi < 0) continue;
-    const H = rows[hi].map(c => String(c).trim()), f = re => H.findIndex(h => re.test(h)), cC = f(/^item code$/i), cB = f(/^barcode$/i), cN = f(/item description/i), cG = f(/^gender$/i), cZ = f(/^size$/i), cP = f(/^physical$/i);
+    const H = rows[hi].map(c => String(c).trim()), f = re => H.findIndex(h => re.test(h)), cC = f(/^item code$/i), cB = f(/^barcode$/i), cN = f(/item description/i), cG = f(/^gender$/i), cZ = f(/^size$/i), cP = f(/^physical$/i), cK = f(/^colou?r$/i);
     if (cC < 0 || cB < 0 || cP < 0) continue; const codes = {}, bc = {};
     if (old) Object.entries(old.bc || {}).forEach(([b, v]) => { bc[b] = [v[0], v[1], 0]; });
     if (old) Object.assign(codes, old.codes);
-    rows.slice(hi + 1).forEach(r => { const c = String(r[cC]).trim(), b = String(r[cB]).trim().replace(/\.0$/, ""); if (!c || !b) return; codes[c] = [cN >= 0 ? String(r[cN]).trim() : c, cG >= 0 ? String(r[cG]).trim() : (GEN_OF[c[1]] || "")]; bc[b] = [c, cZ >= 0 ? String(r[cZ] ?? "").trim() : "", num(r[cP]) || 0]; });
+    rows.slice(hi + 1).forEach(r => { const c = String(r[cC]).trim(), b = String(r[cB]).trim().replace(/\.0$/, ""); if (!c || !b) return; codes[c] = [cN >= 0 ? String(r[cN]).trim() : c, cG >= 0 ? String(r[cG]).trim() : (GEN_OF[c[1]] || ""), cK >= 0 ? String(r[cK] ?? "").trim() : ""]; bc[b] = [c, cZ >= 0 ? String(r[cZ] ?? "").trim() : "", num(r[cP]) || 0]; });
     const n = Object.keys(bc).length; if (!n) continue; return { date: today(), asof: asof || addDays(today(), -1), at: Date.now(), codes, bc, units: Object.values(bc).reduce((a, v) => a + v[2], 0) }; }
   return null;
 }
@@ -1978,19 +1978,21 @@ function stockNow(cat = CATALOG) {
 }
 const stockLabel = (st, ar) => st.upto ? `${ar ? "المخزون بعد مبيعات" : "Stock after sales up to"} <b>${fmtD(st.upto)}</b>` : `${ar ? "المخزون في نهاية يوم" : "Stock at the end of"} <b>${fmtD(st.asof)}</b>`;
 async function stockMonths() { const c = await loadCatalog(); if (!c) return c; for (let x = catAsof(c).slice(0, 7) + "-01"; x <= today(); x = addDays(x, 32).slice(0, 7) + "-01") await loadMonth(x.slice(0, 7)); return c; }
-/* stock grouped for the stock finder: one entry per model and gender, with its sizes */
-function stockModels(cat, st) { const m = {}; (st ? st.rows : Object.values(cat.bc)).forEach(([c, z, p]) => { const info = cat.codes[c] || [c, ""], k = info[0] + "|" + genGroup(info[1]), x = m[k] = m[k] || { n: info[0], g: genGroup(info[1]), cat: CAT(c), sizes: {}, units: 0, codes: {} }; x.sizes[z] = (x.sizes[z] || 0) + p; x.units += p; x.codes[c] = 1; }); return Object.values(m); }
+/* one item code is one colour of a model. The colour name comes from the file when it has one; if not, the last 4 digits of the code tell the colours apart. */
+const colourOf = (c, info) => (info && info[2]) || String(c).slice(-4);
+/* stock grouped for the stock finder: one entry per item code (model + colour), with its sizes */
+function stockModels(cat, st) { const m = {}; (st ? st.rows : Object.values(cat.bc)).forEach(([c, z, p]) => { const info = cat.codes[c] || [c, ""], k = c, x = m[k] = m[k] || { n: info[0], g: genGroup(info[1]), cat: CAT(c), c, col: colourOf(c, info), named: !!info[2], sizes: {}, units: 0, codes: {} }; x.sizes[z] = (x.sizes[z] || 0) + p; x.units += p; x.codes[c] = 1; }); return Object.values(m); }
 const sizeSort = (a, b) => { const o = ["XXS", "XS", "S", "M", "L", "XL", "XXL"], ia = o.indexOf(a), ib = o.indexOf(b); if (ia >= 0 || ib >= 0) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); const fa = parseFloat(a), fb = parseFloat(b); return (isNaN(fa) ? 999 : fa) - (isNaN(fb) ? 999 : fb) || String(a).localeCompare(String(b)); };
 VIEWS.stock = (me, mgr) => {
   const ar = LANG === "ar", cat = CATALOG, qy = (R.q || "").trim().toLowerCase(), g = R.g || "All";
   let h = `<div class="sec"><h1>${ar ? "البحث في المخزون" : "Stock finder"}</h1></div>`;
   if (!cat) return h + `<div class="card stack"><b>${VIEWS.stock.busy ? (ar ? "جارٍ التحميل…" : "Loading…") : (ar ? "لا توجد قائمة أصناف بعد" : "No item list has been loaded yet")}</b>${mgr && !VIEWS.stock.busy ? `<p class="muted small">${ar ? "ارفع ملف توفر الأصناف من صفحة ملف المبيعات." : "Upload the item availability file on the sales file page."}</p><button class="btn" data-go="salesup">${ar ? "فتح الصفحة" : "Open that page"}</button>` : ""}</div>`;
-  const st = stockNow(cat), all = stockModels(cat, st), list = all.filter(x => (g === "All" || x.g === g) && (!qy || x.n.toLowerCase().includes(qy))).sort((a, b) => a.n.localeCompare(b.n) || a.g.localeCompare(b.g));
+  const st = stockNow(cat), all = stockModels(cat, st), list = all.filter(x => (g === "All" || x.g === g) && (!qy || (x.n + " " + x.col + " " + x.c).toLowerCase().includes(qy))).sort((a, b) => a.n.localeCompare(b.n) || a.g.localeCompare(b.g) || a.c.localeCompare(b.c));
   h += `<p class="muted small">${stockLabel(st, ar)}. ${ar ? "آخر ملف مخزون: نهاية يوم" : "Last stock file: end of"} ${fmtD(st.asof)}.</p>${st.miss.length ? `<div class="banner">${ar ? "لا يوجد ملف مبيعات لـ" : "No sales file for"} ${st.miss.map(fmtD).join(", ")}. ${ar ? "مبيعات هذه الأيام غير مخصومة." : "Sales of these days are not taken off yet."}</div>` : ""}
-    <input class="in" id="stQ" type="search" placeholder="${ar ? "ابحث باسم الموديل" : "Search by model name"}" value="${esc(R.q || "")}">
+    <input class="in" id="stQ" type="search" placeholder="${ar ? "ابحث باسم الموديل أو الكود" : "Search by model name or item code"}" value="${esc(R.q || "")}">
     <div class="row" style="gap:6px">${["All", "Men", "Women", "Kids", "Unisex"].map(k => `<button class="chip ${g === k ? "acc" : ""}" data-sg="${k}" style="border:0;padding:9px 14px">${ar ? GEN_AR[k] : k}</button>`).join("")}</div>
-    <p class="small muted num">${list.length} ${ar ? "موديل" : "models"} · ${list.reduce((a, x) => a + x.units, 0)} ${ar ? "قطعة" : "units"}</p>
-    <div class="stack">${list.slice(0, qy ? 60 : 25).map(x => `<div class="card stack"><div class="row"><span class="grow"><b>${esc(x.n)}</b><div class="small muted">${ar ? GEN_AR[x.g] || x.g : x.g} · ${ar ? CAT_AR[x.cat] : x.cat}</div></span><span class="chip num">${x.units}</span></div>
+    <p class="small muted num">${list.length} ${ar ? "لون" : "colours"} · ${list.reduce((a, x) => a + x.units, 0)} ${ar ? "قطعة" : "units"}</p>
+    <div class="stack">${list.slice(0, qy ? 60 : 25).map(x => `<div class="card stack"><div class="row"><span class="grow"><b>${esc(x.n)}</b> <span class="chip num" style="font-weight:700">${x.named ? "" : (ar ? "لون " : "Colour ")}${esc(x.col)}</span><div class="small muted">${ar ? GEN_AR[x.g] || x.g : x.g} · ${ar ? CAT_AR[x.cat] : x.cat} · <span class="num">${esc(x.c)}</span></div></span><span class="chip num">${x.units}</span></div>
       <div class="row" style="gap:6px">${Object.entries(x.sizes).sort((a, b) => sizeSort(a[0], b[0])).map(([z, p]) => `<span class="chip num ${p ? "" : "bad"}" style="${p ? "" : "text-decoration:line-through"}">${esc(z || "–")} <b>×${p}</b></span>`).join("")}</div></div>`).join("") || `<div class="card muted">${ar ? "لا نتائج." : "Nothing found."}</div>`}</div>
     ${list.length > (qy ? 60 : 25) ? `<p class="small muted">${ar ? "اكتب في البحث لرؤية المزيد." : "Type in the search box to narrow the list."}</p>` : ""}`;
   return h;
@@ -2165,7 +2167,7 @@ function modelSheet(key) {
   const ar = LANG === "ar", [from, to] = salesRange(R.p || "m"), d = salesSum(from, to), [name, g] = key.split("|"), m = document.createElement("div"); m.className = "modal";
   const draw = () => { const sizes = {}, days = [], codes = {}; let q2 = 0, a2 = 0;
     d.days.forEach(dy => { const f = salesDay(dy.x); let dq = 0; ((f && f.items) || []).forEach(it => { if ((it.n || it.c) !== name || genOfItem(it) !== g) return; sizes[it.z || "–"] = (sizes[it.z || "–"] || 0) + it.q; codes[it.c] = (codes[it.c] || 0) + it.q; dq += it.q; q2 += it.q; a2 += it.a; }); if (dq) days.push({ x: dy.x, q: dq }); });
-    const st = {}, live = stockNow(); let stU = 0; if (CATALOG) live.rows.forEach(([c, z, p]) => { const info = CATALOG.codes[c]; if (info && info[0] === name && genGroup(info[1]) === g) { st[z || "–"] = (st[z || "–"] || 0) + p; stU += p; } });
+    const st = {}, cst = {}, live = stockNow(); let stU = 0; if (CATALOG) live.rows.forEach(([c, z, p]) => { const info = CATALOG.codes[c]; if (info && info[0] === name && genGroup(info[1]) === g) { cst[c] = (cst[c] || 0) + p; st[z || "–"] = (st[z || "–"] || 0) + p; stU += p; } });
     const allZ = [...new Set([...Object.keys(sizes), ...Object.keys(st)])].sort(sizeSort), mx = Math.max(1, ...Object.values(sizes));
     m.innerHTML = `<div class="sheet" style="max-height:96%"><div class="row"><span class="grow"><h2>${esc(name)}</h2><div class="small muted">${ar ? GEN_AR[g] || g : g} · ${fmtD(d.days[0].x)}${d.n > 1 ? " – " + fmtD(d.last) : ""}</div></span><button class="pill" id="msX">✕</button></div>
       <div class="kpis"><div class="kpi"><b class="num">${q2}</b><span>${ar ? "قطع بيعت" : "Units sold"}</span></div><div class="kpi"><b class="num">${money(a2)}</b><span>${ar ? "المبيعات" : "Sales SAR"}</span></div><div class="kpi"><b class="num">${CATALOG ? stU : "–"}</b><span>${ar ? "في المخزون" : "In stock"}</span></div></div>
@@ -2173,7 +2175,8 @@ function modelSheet(key) {
         ${allZ.map(z => { const s2 = sizes[z] || 0, k = st[z]; return `<tr><td><b>${z === "–" ? (ar ? "غير معروف" : "not known") : esc(z)}</b></td><td><div class="row" style="flex-wrap:nowrap;gap:8px"><span style="min-width:16px">${s2 || ""}</span><div class="bt" style="flex:1;position:relative;height:8px;background:var(--surface2);border-radius:4px">${s2 ? `<i style="display:block;height:100%;width:${s2 / mx * 100}%;background:var(--ink);border-start-end-radius:4px;border-end-end-radius:4px"></i>` : ""}</div></div></td><td style="text-align:end;font-weight:700;color:var(--${!CATALOG ? "muted" : k ? "ink" : "bad"})">${!CATALOG || z === "–" ? "–" : k ? k : (ar ? "نفد" : "none left")}</td></tr>`; }).join("")}</table></div>
       ${CATALOG ? `<p class="small muted">${stockLabel(live, ar)}.</p>` : `<p class="small muted">${ar ? "ارفع ملف توفر الأصناف لرؤية المخزون." : "Upload the item availability file to see stock here."}</p>`}
       ${days.length > 1 ? `<div class="sec"><h3>${ar ? "يوماً بيوم" : "Day by day"}</h3></div><div class="card">${barRows(days.map(x => ({ l: `${DOW[parseD(x.x).getDay()]} ${fmtD(x.x)}`, v: x.q, txt: String(x.q) })))}</div>` : ""}
-      <p class="small muted num">${ar ? "الأكواد:" : "Item codes:"} ${Object.entries(codes).map(([c, n]) => `${esc(c)} ×${n}`).join(" · ")}</p></div>`;
+      <div class="sec"><h3>${ar ? "حسب اللون" : "By colour"}</h3></div><div class="card" style="padding:4px 10px"><table class="t num"><tr><th>${ar ? "اللون" : "Colour"}</th><th style="text-align:end">${ar ? "بيع" : "Sold"}</th><th style="text-align:end">${ar ? "المخزون" : "In stock"}</th></tr>
+        ${[...new Set([...Object.keys(codes), ...Object.keys(cst)])].sort((a, b) => (codes[b] || 0) - (codes[a] || 0) || a.localeCompare(b)).map(c => `<tr><td><b>${esc(colourOf(c, CATALOG && CATALOG.codes[c]))}</b> <span class="muted small">${esc(c)}</span></td><td style="text-align:end">${codes[c] || ""}</td><td style="text-align:end;font-weight:700">${CATALOG ? (cst[c] || 0) : "–"}</td></tr>`).join("")}</table></div></div>`;
     $("#msX", m).onclick = () => m.remove(); };
   document.body.appendChild(m); draw(); if (S.cfg && S.cfg.catalogDate) stockMonths().then(() => { if (m.isConnected) draw(); });
 }
