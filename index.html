@@ -1763,6 +1763,9 @@ function zParse(text) {
   out.payOk = false;
   let best = null; const walk = (i, sum, score, pickd) => { if (i === cands.length) { (subs.length ? subs : [[null, 0]]).forEach(([sv, sc]) => { if (out.caisse === null) return; const need = +(out.caisse - sum).toFixed(2); if (sv !== null ? Math.abs(sv - need) < 0.01 : Math.abs(need) < 0.01 && sum > 0) { const sc2 = score + sc; if (!best || sc2 > best.score) best = { score: sc2, pickd: pickd.slice(), cash: sv === null ? 0 : sv }; } }); return; } cands[i][1].forEach(([v, c]) => { pickd.push(v); walk(i + 1, sum + v, score + c, pickd); pickd.pop(); }); };
   walk(0, 0, 0, []);
+  /* one line read short (11,775.00 seen as 775.00): if the amount that makes the total right ends with the digits that were read, that is the real amount */
+  if (!best && out.caisse !== null) { const fixes = []; (subs.length ? subs.map(x => x[0]) : [0]).forEach(cash => cands.forEach(([k2, c], i) => { const rest = cands.reduce((a2, [k3, c3], j) => a2 + (j === i ? 0 : c3[0][0]), 0), need = +(out.caisse - rest - cash).toFixed(2); if (need > 0 && c.some(([v]) => v !== need && v >= 1 && need.toFixed(2).endsWith(v.toFixed(2)))) fixes.push({ i, need, cash }); }));
+    if (fixes.length === 1) best = { pickd: cands.map(([, c], j) => (j === fixes[0].i ? fixes[0].need : c[0][0])), cash: fixes[0].cash }; }
   if (best) { cands.forEach(([k2], i) => { pay[k2] = best.pickd[i]; }); pay.cash = best.cash; out.payOk = true; }
   else { cands.forEach(([k2, c]) => { pay[k2] = c[0][0]; }); if (subs.length) pay.cash = subs[0][0]; out.notes.push(out.caisse === null ? "The payments total was not read. Check every payment line against the paper." : "The payment lines that were read do not add up to the total. Check every payment line against the paper."); }
   out.pay = pay;
