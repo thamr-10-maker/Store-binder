@@ -1782,7 +1782,7 @@ function zParse(text) {
   const votes = [cand(qty)[0], cand(lastQ)[0], cand(bare)[0], qT && qF ? qT[2] - qF[2] : null, cand(nItems)[0], per(/figures\s*\/\s*Item/i)];
   const u = cand(votes); out.units = u[0];
   if (out.units === null) out.notes.push("The number of units could not be read. Please type it.");
-  else if (u[1] < 2 || u[2] > 1) out.notes.push(u[2] > 1 ? "The number of units was read differently in two places. Please check it against the paper." : "The number of units was read in one place only. Please check it against the paper.");
+  else if (u[1] < 2 || (u[2] > 1 && votes.filter(v => v !== null && v !== undefined && v >= 0 && v !== u[0]).length >= u[1] - 1)) out.notes.push(u[2] > 1 ? "The number of units was read differently in two places. Please check it against the paper." : "The number of units was read in one place only. Please check it against the paper.");
   const nRec = find(/\bof\s*receipts/i).map(l => ints(l.replace(/.*receipts/i, "")).pop()).filter(v => v !== undefined);
   const perRec = per(/figures\s*\/\s*Rece/i), ratioL = find(/items\s*\/\s*re/i)[0], ratio = ratioL ? amt(ratioL).pop() : undefined, byRatio = ratio && out.units !== null ? Math.round(out.units / ratio) : null;
   const r2 = cand([perRec, ...new Set(nRec), byRatio]); out.inv = r2[1] >= 2 ? r2[0] : perRec !== null ? perRec : byRatio !== null ? byRatio : r2[0];
