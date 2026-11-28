@@ -1733,7 +1733,7 @@ async function zRead(file, onStep) {
 function zFacts(text) {
   const amt = t => { const m = String(t).match(/-?\d{1,3}(?:,\d{3})*\.\d{2}|-?\d+\.\d{2}/g); return m ? m.map(x => parseFloat(x.replace(/,/g, ""))) : []; }, lines = text.split("\n").map(l => l.trim());
   const rg = text.match(/\b(\d{4}\s?[Pp]\s?\d)\b/), tot = new Set(); lines.forEach(l => { if (/invento|^total\b|caisse|sales\s*receipts|sales\s*fig/i.test(l)) { const a = amt(l); if (a.length) tot.add(a[a.length - 1]); } }); tot.delete(0);
-  return { reg: rg ? rg[1].replace(/\s/g, "").toUpperCase() : null, totals: [...tot], top: /DAY.?S\s+OPERATIONS|amounts-Tax/i.test(text), pay: /PAYMENT|MADA|Visa\s*\(/i.test(text), end: /Number\s*of\s*(receipts|items)|sales\s*fig/i.test(text) };
+  return { reg: rg ? rg[1].replace(/\s/g, "").toUpperCase() : null, totals: [...tot], top: /DAY.?S\s+OPERATIONS|amounts-Tax/i.test(text), pay: /PAYMENT|MADA|Visa\s*\(/i.test(text), end: /\bof\s*(receipts|items)|sales\s*fig/i.test(text) };
 }
 /* pull the numbers out of the text; every number is looked for in more than one place on the receipt */
 function zParse(text) {
@@ -1754,20 +1754,24 @@ function zParse(text) {
   out.fin = fin3 ? fin3[2] : out.caisse !== null && out.sales !== null ? +(out.caisse - out.sales).toFixed(2) : 0;
   if (out.caisse === null && out.sales !== null) out.caisse = +(out.sales + out.fin).toFixed(2);
   /* payments must add up to the register total (sales plus any cash float movement) */
-  const pay = {}; [["mada", /^[MH]ADA\b/i], ["mc", /^Master/i], ["visa", /^Visa\b/i], ["amex", /^Am(ex|erican)/i], ["tamara", /Tamara/i], ["tabby", /Tabby/i], ["other", /^Other/i]].forEach(([k2, re]) => { const l = find(re)[0]; if (l) { const a = amt(l).pop(); if (a !== undefined) pay[k2] = a; } });
-  const others = Object.values(pay).reduce((a, b) => a + b, 0), sub = find(/subtotal/i)[0], subV = sub ? amt(sub).pop() : undefined;
+  /* every payment line is looked for anywhere on its line (photos often put a stray mark in front), in both readings of the photo.
+     The values kept are the ones that add up to the register total. Nothing is guessed into cash when they do not. */
+  const pay = {}, cnt = arr => { const c2 = {}; arr.forEach(v => { c2[v] = (c2[v] || 0) + 1; }); return Object.keys(c2).map(k2 => [+k2, c2[k2]]).sort((a, b) => b[1] - a[1]); };
+  const PAYRE = [["mada", /\b[MH]ADA\b/i], ["mc", /Master\s*c?a?r?d?\s*\(|\bMaster/i], ["visa", /\b[VY]isa\b/i], ["amex", /\bAm(ex|erican)/i], ["tamara", /Tamara/i], ["tabby", /Tabby/i], ["other", /\bOther/i]];
+  const cands = PAYRE.map(([k2, re]) => [k2, cnt(lines.filter(l => re.test(l) && !/total|caisse/i.test(l)).map(l => amt(l).pop()).filter(v => v !== undefined && v > 0)).slice(0, 4)]).filter(c => c[1].length);
+  const subs = cnt(find(/subtotal/i).map(l => amt(l).pop()).filter(v => v !== undefined)).slice(0, 4);
   out.payOk = false;
-  if (out.caisse !== null) { const need = +(out.caisse - others).toFixed(2);
-    if ((subV !== undefined && Math.abs(subV - need) < 0.01) || (Math.abs(need) < 0.01 && others > 0)) { pay.cash = Math.abs(need) < 0.01 ? 0 : subV; out.payOk = true; }
-    else { pay.cash = need; out.notes.push(`The cash line was not clear. Cash was worked out as ${need} from the total. Please check it and the card lines.`); } }
-  else if (subV !== undefined) pay.cash = subV;
+  let best = null; const walk = (i, sum, score, pickd) => { if (i === cands.length) { (subs.length ? subs : [[null, 0]]).forEach(([sv, sc]) => { if (out.caisse === null) return; const need = +(out.caisse - sum).toFixed(2); if (sv !== null ? Math.abs(sv - need) < 0.01 : Math.abs(need) < 0.01 && sum > 0) { const sc2 = score + sc; if (!best || sc2 > best.score) best = { score: sc2, pickd: pickd.slice(), cash: sv === null ? 0 : sv }; } }); return; } cands[i][1].forEach(([v, c]) => { pickd.push(v); walk(i + 1, sum + v, score + c, pickd); pickd.pop(); }); };
+  walk(0, 0, 0, []);
+  if (best) { cands.forEach(([k2], i) => { pay[k2] = best.pickd[i]; }); pay.cash = best.cash; out.payOk = true; }
+  else { cands.forEach(([k2, c]) => { pay[k2] = c[0][0]; }); if (subs.length) pay.cash = subs[0][0]; out.notes.push(out.caisse === null ? "The payments total was not read. Check every payment line against the paper." : "The payment lines that were read do not add up to the total. Check every payment line against the paper."); }
   out.pay = pay;
-  const ci = lines.findIndex(l => /^Cash\s*\(/i.test(l)); if (ci >= 0 && pay.cash !== undefined) { const a = amt(lines[ci]).pop(), b = lines[ci + 1] && !/subtotal/i.test(lines[ci + 1]) ? amt(lines[ci + 1]).pop() : 0; if (a !== undefined && b !== undefined && Math.abs(a - Math.abs(b) - pay.cash) < 0.01) { out.cashIn = a; out.cashOut = Math.abs(b); } }
+  const ci = lines.findIndex(l => /\bCash\s*\(/i.test(l)); if (ci >= 0 && pay.cash !== undefined) { const a = amt(lines[ci]).pop(), b = lines[ci + 1] && !/subtotal/i.test(lines[ci + 1]) ? amt(lines[ci + 1]).pop() : 0; if (a !== undefined && b !== undefined && Math.abs(a - Math.abs(b) - pay.cash) < 0.01) { out.cashIn = a; out.cashOut = Math.abs(b); } }
   /* units: the quantities line (sold, returned, net) or "Number of items" or total ÷ sales per item */
   const cand = (arr) => { const c2 = {}; arr.filter(v => v !== null && v !== undefined && isFinite(v) && v >= 0).forEach(v => { c2[v] = (c2[v] || 0) + 1; }); const ks = Object.keys(c2).sort((a, b) => c2[b] - c2[a]); return ks.length ? [+ks[0], c2[ks[0]], ks.length] : [null, 0, 0]; };
   const qty = lines.filter(l => /invento/i.test(l) && !amt(l).length).map(ints).filter(a => a.length === 3 && a[0] + a[1] === a[2]).map(a => a[2]);
   const per = re => { const l = find(re)[0], a = l ? amt(l).pop() : undefined; return a && out.sales !== null && Math.abs(out.sales / a - Math.round(out.sales / a)) < 0.02 ? Math.round(out.sales / a) : null; };
-  const nItems = find(/Number\s*of\s*items\s*(?!\/)/i).filter(l => !/\/\s*re/i.test(l)).map(l => ints(l.replace(/.*items/i, "")).pop());
+  const nItems = find(/\bof\s*items\s*(?!\/)/i).filter(l => !/\/\s*re/i.test(l)).map(l => ints(l.replace(/.*items/i, "")).pop());
   /* more places the unit count shows: the unlabelled sum line under "quantities", and Total minus Financial */
   const qi = lines.findIndex(l => /quantit/i.test(l)), near = qi >= 0 ? lines.slice(qi + 1, qi + 10) : [], tri3 = l => { if (amt(l).length) return null; const a = ints(l); return a.length === 3 && a[0] + a[1] === a[2] ? a : null; };
   const bare = near.filter(l => !/[a-z]{3}/i.test(l)).map(tri3).filter(Boolean).map(a => a[2]), qT = near.filter(l => /^total/i.test(l)).map(tri3).find(Boolean), qF = near.filter(l => /^financ/i.test(l)).map(l => ints(l)).find(a => a.length === 3);
@@ -1776,9 +1780,9 @@ function zParse(text) {
   const u = cand(votes); out.units = u[0];
   if (out.units === null) out.notes.push("The number of units could not be read. Please type it.");
   else if (u[1] < 2 || u[2] > 1) out.notes.push(u[2] > 1 ? "The number of units was read differently in two places. Please check it against the paper." : "The number of units was read in one place only. Please check it against the paper.");
-  const nRec = find(/Number\s*of\s*receipts/i).map(l => ints(l.replace(/.*receipts/i, "")).pop()).filter(v => v !== undefined);
+  const nRec = find(/\bof\s*receipts/i).map(l => ints(l.replace(/.*receipts/i, "")).pop()).filter(v => v !== undefined);
   const perRec = per(/figures\s*\/\s*Rece/i), ratioL = find(/items\s*\/\s*re/i)[0], ratio = ratioL ? amt(ratioL).pop() : undefined, byRatio = ratio && out.units !== null ? Math.round(out.units / ratio) : null;
-  const r2 = cand([perRec, cand(nRec)[0], byRatio]); out.inv = r2[1] >= 2 ? r2[0] : perRec !== null ? perRec : byRatio !== null ? byRatio : r2[0];
+  const r2 = cand([perRec, ...new Set(nRec), byRatio]); out.inv = r2[1] >= 2 ? r2[0] : perRec !== null ? perRec : byRatio !== null ? byRatio : r2[0];
   if (out.inv === null) out.notes.push("The number of receipts could not be read. Please type it.");
   if (out.inv !== null && r2[1] < 2) out.notes.push("The number of receipts was hard to read. Please check it against the paper.");
   const dm = text.match(/from\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/i); if (dm) out.date = `${dm[3]}-${pad2(+dm[1])}-${pad2(+dm[2])}`;
@@ -1821,6 +1825,8 @@ function zScanSheet(date, onUse) {
           ${z.date && z.date !== date ? `<div class="banner">${ar ? "تاريخ هذا التقرير" : "This Z report is dated"} ${longDate(z.date)}, ${ar ? "وليس" : "not"} ${longDate(date)}.</div>` : ""}${miss.length ? "" : (z.notes || []).map(n => `<div class="banner">${esc(n)}</div>`).join("")}</div>`; }).join("")}
       ${dup ? `<div class="banner">${ar ? "التقريران متطابقان. تأكد أنك لم تصوّر نفس الورقة مرتين." : "Both registers show the same numbers. Make sure the same paper was not scanned twice."}</div>` : ""}
       ${P.length && !busy ? `<div class="card stack"><b>${ar ? "المجموع لليوم" : "Total for the day"} · ${P.length} ${ar ? "كاشير" : P.length > 1 ? "registers" : "register"}</b><div class="kpis"><div class="kpi"><b class="num">${money(tot("sales"))}</b><span>${ar ? "المبيعات" : "Sales SAR"}</span></div><div class="kpi"><b class="num">${tot("inv")}</b><span>${ar ? "الفواتير" : "Receipts"}</span></div><div class="kpi"><b class="num">${tot("units")}</b><span>${ar ? "القطع" : "Units"}</span></div></div>
+        ${(() => { const pt = {}; P.forEach(z => Object.entries(z.pay || {}).forEach(([k2, v]) => { pt[k2] = (pt[k2] || 0) + v; })); const sum = Object.values(pt).reduce((a, b) => a + b, 0), need = P.reduce((a, z) => a + (z.caisse || 0), 0), good = P.every(z => z.payOk) && Math.abs(sum - need) < 0.01;
+          return `<table class="t num">${Object.keys(PAY_LABEL).filter(k2 => k2 in pt).map(k2 => `<tr><td>${PAY_LABEL[k2]}</td><td style="text-align:end"><b>${money(pt[k2])}</b></td></tr>`).join("")}<tr><td>${ar ? "مجموع طرق الدفع" : "Payments total"}</td><td style="text-align:end;font-weight:700;color:var(--${good ? "ok" : "bad"})">${money(sum)} ${good ? "✓" : "✗"}</td></tr></table>${good ? "" : `<div class="banner" style="background:var(--bad-soft);color:var(--bad);border-color:var(--bad)">${ar ? "طرق الدفع لا تساوي المجموع. صحّحها في الصفحة التالية من الورقة قبل المتابعة." : "The payments do not add up to the total. Fix them from the paper on the next screen before you go on."}</div>`}`; })()}
         <button class="btn" id="zUse">${ar ? "استخدم هذه الأرقام" : "Use these numbers"}</button></div>` : ""}</div>`;
     $("#zX", m).onclick = () => { shots.forEach(x => URL.revokeObjectURL(x.url)); zWorkerEnd(); m.remove(); };
     $("#zAdd", m).onchange = e => { [...e.target.files].forEach(f => { const x = { id: ++seq, url: URL.createObjectURL(f), busy: 1, f: { totals: [] } }; shots.push(x);
