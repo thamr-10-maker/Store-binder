@@ -1956,7 +1956,7 @@ function loadCatalog(force) {
 }
 async function saveCatalog(cat) { CATALOG = cat; catLoading = Promise.resolve(cat); const json = JSON.stringify(cat); if (S.mode === "cloud") await DB.doc("stock/catalog").set({ json, at: cat.at, date: cat.date }); else { try { localStorage.setItem("sb-catalog", json); } catch (e) {} } Data.saveCfg({ catalogDate: cat.date, catalogAt: cat.at }); }
 /* reads the item availability export. Sizes that were in an older list but are missing now are kept with 0 in stock, so their barcodes stay known. */
-function parseAvail(sheets, old) {
+function parseAvail(sheets, old, asof) {
   if (sheets.length && !Array.isArray(sheets[0][0])) sheets = [sheets];
   for (const rows of sheets) { const hi = rows.findIndex(r => r.some(c => /^barcode$/i.test(String(c).trim())) && r.some(c => /^physical$/i.test(String(c).trim()))); if (hi < 0) continue;
     const H = rows[hi].map(c => String(c).trim()), f = re => H.findIndex(h => re.test(h)), cC = f(/^item code$/i), cB = f(/^barcode$/i), cN = f(/item description/i), cG = f(/^gender$/i), cZ = f(/^size$/i), cP = f(/^physical$/i);
@@ -1964,18 +1964,29 @@ function parseAvail(sheets, old) {
     if (old) Object.entries(old.bc || {}).forEach(([b, v]) => { bc[b] = [v[0], v[1], 0]; });
     if (old) Object.assign(codes, old.codes);
     rows.slice(hi + 1).forEach(r => { const c = String(r[cC]).trim(), b = String(r[cB]).trim().replace(/\.0$/, ""); if (!c || !b) return; codes[c] = [cN >= 0 ? String(r[cN]).trim() : c, cG >= 0 ? String(r[cG]).trim() : (GEN_OF[c[1]] || "")]; bc[b] = [c, cZ >= 0 ? String(r[cZ] ?? "").trim() : "", num(r[cP]) || 0]; });
-    const n = Object.keys(bc).length; if (!n) continue; return { date: today(), at: Date.now(), codes, bc, units: Object.values(bc).reduce((a, v) => a + v[2], 0) }; }
+    const n = Object.keys(bc).length; if (!n) continue; return { date: today(), asof: asof || addDays(today(), -1), at: Date.now(), codes, bc, units: Object.values(bc).reduce((a, v) => a + v[2], 0) }; }
   return null;
 }
+/* live stock: the count in the item file, minus what was sold on every later day that has a sales file (returns go back in).
+   It is worked out fresh each time from the file's count, so loading a sales day twice never takes it off twice. */
+const catAsof = cat => cat.asof || addDays(cat.date, -1);
+function stockNow(cat = CATALOG) {
+  if (!cat) return null; const asof = catAsof(cat), sold = {}, miss = []; let upto = null;
+  for (let x = addDays(asof, 1); x <= today(); x = addDays(x, 1)) { const d = salesDay(x); if (!d || !d.items) { if (x < today()) miss.push(x); continue; } upto = x; d.items.forEach(it => { const k = it.c + "|" + (it.z || ""); sold[k] = (sold[k] || 0) + it.q; }); }
+  const left = { ...sold }, rows = Object.values(cat.bc).map(([c, z, p]) => { const k = c + "|" + z, s = left[k] || 0; if (s) left[k] = 0; return [c, z, Math.max(0, p - s)]; }), by = {}; rows.forEach(r => { by[r[0] + "|" + r[1]] = (by[r[0] + "|" + r[1]] || 0) + r[2]; });
+  return { rows, by, asof, upto, miss: upto ? miss.filter(x => x < upto) : [] };
+}
+const stockLabel = (st, ar) => st.upto ? `${ar ? "المخزون بعد مبيعات" : "Stock after sales up to"} <b>${fmtD(st.upto)}</b>` : `${ar ? "المخزون في نهاية يوم" : "Stock at the end of"} <b>${fmtD(st.asof)}</b>`;
+async function stockMonths() { const c = await loadCatalog(); if (!c) return c; for (let x = catAsof(c).slice(0, 7) + "-01"; x <= today(); x = addDays(x, 32).slice(0, 7) + "-01") await loadMonth(x.slice(0, 7)); return c; }
 /* stock grouped for the stock finder: one entry per model and gender, with its sizes */
-function stockModels(cat) { const m = {}; Object.values(cat.bc).forEach(([c, z, p]) => { const info = cat.codes[c] || [c, ""], k = info[0] + "|" + genGroup(info[1]), x = m[k] = m[k] || { n: info[0], g: genGroup(info[1]), cat: CAT(c), sizes: {}, units: 0, codes: {} }; x.sizes[z] = (x.sizes[z] || 0) + p; x.units += p; x.codes[c] = 1; }); return Object.values(m); }
+function stockModels(cat, st) { const m = {}; (st ? st.rows : Object.values(cat.bc)).forEach(([c, z, p]) => { const info = cat.codes[c] || [c, ""], k = info[0] + "|" + genGroup(info[1]), x = m[k] = m[k] || { n: info[0], g: genGroup(info[1]), cat: CAT(c), sizes: {}, units: 0, codes: {} }; x.sizes[z] = (x.sizes[z] || 0) + p; x.units += p; x.codes[c] = 1; }); return Object.values(m); }
 const sizeSort = (a, b) => { const o = ["XXS", "XS", "S", "M", "L", "XL", "XXL"], ia = o.indexOf(a), ib = o.indexOf(b); if (ia >= 0 || ib >= 0) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); const fa = parseFloat(a), fb = parseFloat(b); return (isNaN(fa) ? 999 : fa) - (isNaN(fb) ? 999 : fb) || String(a).localeCompare(String(b)); };
 VIEWS.stock = (me, mgr) => {
   const ar = LANG === "ar", cat = CATALOG, qy = (R.q || "").trim().toLowerCase(), g = R.g || "All";
   let h = `<div class="sec"><h1>${ar ? "البحث في المخزون" : "Stock finder"}</h1></div>`;
   if (!cat) return h + `<div class="card stack"><b>${VIEWS.stock.busy ? (ar ? "جارٍ التحميل…" : "Loading…") : (ar ? "لا توجد قائمة أصناف بعد" : "No item list has been loaded yet")}</b>${mgr && !VIEWS.stock.busy ? `<p class="muted small">${ar ? "ارفع ملف توفر الأصناف من صفحة ملف المبيعات." : "Upload the item availability file on the sales file page."}</p><button class="btn" data-go="salesup">${ar ? "فتح الصفحة" : "Open that page"}</button>` : ""}</div>`;
-  const all = stockModels(cat), list = all.filter(x => (g === "All" || x.g === g) && (!qy || x.n.toLowerCase().includes(qy))).sort((a, b) => a.n.localeCompare(b.n) || a.g.localeCompare(b.g));
-  h += `<p class="muted small">${ar ? "المخزون كما في ملف" : "Stock as in the file of"} <b>${fmtD(cat.date)}</b>. ${ar ? "المبيعات بعد ذلك غير مخصومة." : "Sales after that are not taken off."}</p>
+  const st = stockNow(cat), all = stockModels(cat, st), list = all.filter(x => (g === "All" || x.g === g) && (!qy || x.n.toLowerCase().includes(qy))).sort((a, b) => a.n.localeCompare(b.n) || a.g.localeCompare(b.g));
+  h += `<p class="muted small">${stockLabel(st, ar)}. ${ar ? "آخر ملف مخزون: نهاية يوم" : "Last stock file: end of"} ${fmtD(st.asof)}.</p>${st.miss.length ? `<div class="banner">${ar ? "لا يوجد ملف مبيعات لـ" : "No sales file for"} ${st.miss.map(fmtD).join(", ")}. ${ar ? "مبيعات هذه الأيام غير مخصومة." : "Sales of these days are not taken off yet."}</div>` : ""}
     <input class="in" id="stQ" type="search" placeholder="${ar ? "ابحث باسم الموديل" : "Search by model name"}" value="${esc(R.q || "")}">
     <div class="row" style="gap:6px">${["All", "Men", "Women", "Kids", "Unisex"].map(k => `<button class="chip ${g === k ? "acc" : ""}" data-sg="${k}" style="border:0;padding:9px 14px">${ar ? GEN_AR[k] : k}</button>`).join("")}</div>
     <p class="small muted num">${list.length} ${ar ? "موديل" : "models"} · ${list.reduce((a, x) => a + x.units, 0)} ${ar ? "قطعة" : "units"}</p>
@@ -1985,7 +1996,7 @@ VIEWS.stock = (me, mgr) => {
   return h;
 };
 HOOKS.stock = app => {
-  if (!CATALOG && !VIEWS.stock.tried) { VIEWS.stock.tried = true; VIEWS.stock.busy = true; loadCatalog().then(() => { VIEWS.stock.busy = false; if (R.view === "stock") render(); }); }
+  if (!VIEWS.stock.tried) { VIEWS.stock.tried = true; VIEWS.stock.busy = true; stockMonths().then(() => { VIEWS.stock.busy = false; if (R.view === "stock") render(); }); }
   const qi = $("#stQ", app); if (qi) qi.oninput = () => { R.q = qi.value; clearTimeout(qi._t); qi._t = setTimeout(() => { render(); const n = $("#stQ"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 300); };
   app.querySelectorAll("[data-sg]").forEach(b => b.onclick = () => { R.g = b.dataset.sg; render(); });
 };
@@ -1998,7 +2009,8 @@ function salesDay(date) { let best = null; S.recs.forEach(r => { if (r.form === 
 /* items sold on the last selling day before `date`; if that is fewer than 20, earlier days top the list up */
 function salesItemsBefore(date, back = 10, want = 20) { let first = null; const out = [], seen = {};
   for (let i = 1; i <= back && out.length < want; i++) { const x = addDays(date, -i), d = salesDay(x); ((d && d.items) || []).filter(it => it.q > 0).forEach(it => { const k = it.c + "|" + it.z; if (!seen[k] && out.length < want) { seen[k] = 1; out.push(it); if (!first) first = x; } }); }
-  return out.length ? { date: first, items: out } : null; }
+  const st = stockNow();      // the system quantity for the stock check is the live stock
+  return out.length ? { date: first, items: st ? out.map(it => (it.c + "|" + (it.z || "")) in st.by ? { ...it, sys: st.by[it.c + "|" + (it.z || "")] } : it) : out } : null; }
 /* reads the till export (every sheet). Customer columns are never read or kept. */
 async function readBook(file) { const X = await loadXlsx(), wb = X.read(await file.arrayBuffer(), { type: "array" }); return wb.SheetNames.map(n => X.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" })); }
 const SIZE_END = /\s+(\d{1,2}(\.5)?|XXS|XS|S|M|L|XL|XXL|One Size)$/i;
@@ -2052,7 +2064,7 @@ VIEWS.salesup = (me, mgr) => {
   const ym = ymOf(td), monthDays = []; for (let x = ym + "-01"; x <= td; x = addDays(x, 1)) { const d = salesDay(x); if (d) monthDays.push(d); }
   let h = `<div class="sec"><h1>${ar ? "ملف مبيعات الأمس" : "Yesterday's sales file"}</h1><span class="chip ${done ? "ok" : "warn"}">${done ? (ar ? "تم اليوم" : "Done today") : (ar ? "مطلوب اليوم" : "Due today")}</span></div>
     <p class="muted">${ar ? "كل يوم: صدّر تقرير المبيعات من نظام البيع (Excel) وارفعه هنا. لا تُحفظ أسماء العملاء." : "Every day: export the Sales Report from the till system (Excel) and upload it here. Customer names are not read or kept."}</p><div class="field"><label for="sfDay">${ar ? "يوم الملف (إذا لم يكن التاريخ داخله)" : "Day of the file (used when the file has no date inside)"}</label><input class="in num" type="date" id="sfDay" value="${esc(R.fd || yd)}" max="${td}"></div>${fileBtn("sfFile", ar ? "اختر ملف المبيعات" : "Choose the sales file")}<p class="small" id="sfMsg" style="color:var(--bad)"></p>
-    <details class="card" ${S.cfg && S.cfg.catalogDate ? "" : "open"}><summary>${ar ? "قائمة الأصناف والمخزون" : "Item list and stock"} · ${S.cfg && S.cfg.catalogDate ? fmtD(S.cfg.catalogDate) : (ar ? "غير محمّلة" : "not loaded")}</summary><p class="small muted" style="margin:8px 0">${ar ? "ارفع ملف توفر الأصناف مرة، ثم كلما تغيّر المخزون (استلام بضاعة مثلاً). منه تأتي أسماء الموديلات والجنس والمقاسات وكمية النظام." : "Upload the item availability file once, then again whenever stock changes (after a delivery, for example). Model names, men or women, sizes and the system quantity all come from it."}</p>${fileBtn("sfCat", ar ? "اختر ملف توفر الأصناف" : "Choose the item availability file")}<p class="small" id="sfCatMsg"></p></details>`;
+    <details class="card" ${S.cfg && S.cfg.catalogDate ? "" : "open"}><summary>${ar ? "قائمة الأصناف والمخزون" : "Item list and stock"} · ${S.cfg && S.cfg.catalogDate ? fmtD(S.cfg.catalogDate) : (ar ? "غير محمّلة" : "not loaded")}</summary><p class="small muted" style="margin:8px 0">${ar ? "ارفع ملف توفر الأصناف مرة، ثم كلما تغيّر المخزون (استلام بضاعة مثلاً). منه تأتي أسماء الموديلات والجنس والمقاسات وكمية النظام." : "Upload the item availability file once. After that the app takes each day's sales off the stock by itself. Upload it again only after a delivery, a transfer or a stock count."}</p><div class="field"><label for="sfAsof">${ar ? "المخزون في الملف هو نهاية أي يوم؟" : "The stock in the file is as of the end of which day?"}</label><input class="in num" type="date" id="sfAsof" value="${yd}" max="${td}"><p class="small muted">${ar ? "إذا صدّرت الملف صباحاً قبل أي بيع، اتركه على أمس. إذا صدّرته بعد الإغلاق، اختر اليوم." : "If you exported the file in the morning before any sale, leave it on yesterday. If you exported it after closing, choose today."}</p></div>${fileBtn("sfCat", ar ? "اختر ملف توفر الأصناف" : "Choose the item availability file")}<p class="small" id="sfCatMsg"></p></details>`;
   if (SF) { const ds = Object.keys(SF.days).sort();
     h += `<div class="card stack"><b>${ar ? "ما وُجد في الملف" : "What the file holds"}</b><div class="scroll"><table class="t num"><tr><th>${ar ? "اليوم" : "Day"}</th><th style="text-align:end">${ar ? "فواتير" : "Receipts"}</th><th style="text-align:end">${ar ? "قطع" : "Units"}</th><th style="text-align:end">${ar ? "المبيعات" : "Sales SAR"}</th><th style="text-align:end">${ar ? "التقرير اليومي" : "Daily report"}</th></tr>${ds.map(x => dayRow(x, SF.days[x])).join("")}</table></div>
       <p class="small muted">${ar ? "العمود الأخير: ✓ يعني مطابق لتقرير المبيعات اليومي. الرقم الأحمر هو ما في التقرير." : "Last column: ✓ means it matches the Daily Sales Report. A red number is what the report has instead."}</p>
@@ -2081,10 +2093,10 @@ HOOKS.salesup = app => {
   const al = $("#sfAll", app); if (al) al.onclick = () => { R.all = !R.all; render(); };
   $("#sfDay", app).onchange = e => { R.fd = e.target.value; };
   $("#sfCat", app).onchange = async e => { const f = e.target.files[0], cm = $("#sfCatMsg", app); if (!f) return; cm.textContent = ar ? "جارٍ القراءة…" : "Reading…";
-    try { const old = await loadCatalog(), c = parseAvail(await readBook(f), old); if (!c) { cm.textContent = ar ? "ليس ملف توفر الأصناف (لا يوجد عمود Barcode و Physical)." : "This is not the item availability file (no Barcode and Physical columns)."; return; }
+    try { const old = await loadCatalog(), c = parseAvail(await readBook(f), old, $("#sfAsof", app).value); if (!c) { cm.textContent = ar ? "ليس ملف توفر الأصناف (لا يوجد عمود Barcode و Physical)." : "This is not the item availability file (no Barcode and Physical columns)."; return; }
       await saveCatalog(c); toast(ar ? "تم تحميل قائمة الأصناف" : "Item list loaded"); render(); const m2 = $("#sfCatMsg"); if (m2) m2.textContent = `${Object.keys(c.codes).length} ${ar ? "كود" : "item codes"} · ${Object.keys(c.bc).length} ${ar ? "مقاس" : "sizes"} · ${c.units} ${ar ? "قطعة في المخزون" : "units in stock"}`; }
     catch (er) { console.error(er); cm.textContent = er.message || String(er); } };
-  if (!CATALOG && S.cfg && S.cfg.catalogDate) loadCatalog();
+  if (S.cfg && S.cfg.catalogDate) stockMonths();
   const sv = $("#sfSave", app); if (sv) sv.onclick = async () => { const td = today(), fill = $("#sfFill", app).checked, days = {};
     for (const d of Object.keys(SF.days)) await loadMonth(ymOf(d));
     Object.entries(SF.days).forEach(([d, v]) => { days[d] = Object.assign({}, salesDay(d), v); });
@@ -2109,6 +2121,7 @@ function salesSum(from, to) {
 /* one labelled bar per row: a single series, so no legend and no colour coding */
 const barRows = (rows, o = {}) => { const max = Math.max(1, ...rows.map(r => Math.max(r.v, r.t || 0))); return `<div class="bars">${rows.map(r => `<div class="br"><span class="bl">${r.rank ? `<span class="muted num">${r.rank}</span> ` : ""}${esc(r.l)}${r.sub ? ` <span class="muted">${esc(r.sub)}</span>` : ""}</span><span class="bv num">${esc(r.txt)}</span><div class="bt"><i style="width:${Math.max(0, r.v) / max * 100}%"></i>${r.t ? `<b style="inset-inline-start:${Math.min(100, r.t / max * 100)}%" title="${o.tick || ""}"></b>` : ""}</div></div>`).join("")}</div>`; };
 function salesHero() {
+  if (!CATALOG && S.cfg && S.cfg.catalogDate) stockMonths();      // so the stock check and the stock finder have the item list ready
   const ar = LANG === "ar", [a, b] = salesRange("m"), m = salesSum(a, b); if (!m.n && !iAmMgr()) return "";
   const v = m.target ? m.sales / m.target - 1 : null;
   return `<button class="hero" data-go="sales" style="width:100%;border:0;text-align:start;cursor:pointer;font:inherit"><div class="row" style="flex-wrap:nowrap"><div class="grow"><div class="muted small">${ar ? "مبيعات الشهر" : "Sales this month"}</div><div class="score num" style="font-size:2.4rem">${m.n ? money(m.sales) : "–"} <span style="font-size:1rem;font-weight:600">SAR</span></div></div><span class="chip" style="background:#fff;color:#000;font-weight:700">${ar ? "لوحة المبيعات" : "Sales dashboard"} ›</span></div>
@@ -2152,17 +2165,17 @@ function modelSheet(key) {
   const ar = LANG === "ar", [from, to] = salesRange(R.p || "m"), d = salesSum(from, to), [name, g] = key.split("|"), m = document.createElement("div"); m.className = "modal";
   const draw = () => { const sizes = {}, days = [], codes = {}; let q2 = 0, a2 = 0;
     d.days.forEach(dy => { const f = salesDay(dy.x); let dq = 0; ((f && f.items) || []).forEach(it => { if ((it.n || it.c) !== name || genOfItem(it) !== g) return; sizes[it.z || "–"] = (sizes[it.z || "–"] || 0) + it.q; codes[it.c] = (codes[it.c] || 0) + it.q; dq += it.q; q2 += it.q; a2 += it.a; }); if (dq) days.push({ x: dy.x, q: dq }); });
-    const st = {}; let stU = 0; if (CATALOG) Object.values(CATALOG.bc).forEach(([c, z, p]) => { const info = CATALOG.codes[c]; if (info && info[0] === name && genGroup(info[1]) === g) { st[z || "–"] = (st[z || "–"] || 0) + p; stU += p; } });
+    const st = {}, live = stockNow(); let stU = 0; if (CATALOG) live.rows.forEach(([c, z, p]) => { const info = CATALOG.codes[c]; if (info && info[0] === name && genGroup(info[1]) === g) { st[z || "–"] = (st[z || "–"] || 0) + p; stU += p; } });
     const allZ = [...new Set([...Object.keys(sizes), ...Object.keys(st)])].sort(sizeSort), mx = Math.max(1, ...Object.values(sizes));
     m.innerHTML = `<div class="sheet" style="max-height:96%"><div class="row"><span class="grow"><h2>${esc(name)}</h2><div class="small muted">${ar ? GEN_AR[g] || g : g} · ${fmtD(d.days[0].x)}${d.n > 1 ? " – " + fmtD(d.last) : ""}</div></span><button class="pill" id="msX">✕</button></div>
       <div class="kpis"><div class="kpi"><b class="num">${q2}</b><span>${ar ? "قطع بيعت" : "Units sold"}</span></div><div class="kpi"><b class="num">${money(a2)}</b><span>${ar ? "المبيعات" : "Sales SAR"}</span></div><div class="kpi"><b class="num">${CATALOG ? stU : "–"}</b><span>${ar ? "في المخزون" : "In stock"}</span></div></div>
       <div class="card" style="padding:4px 10px"><table class="t num"><tr><th>${ar ? "المقاس" : "Size"}</th><th style="width:45%">${ar ? "بيع" : "Sold"}</th><th style="text-align:end">${ar ? "المخزون" : "In stock"}</th></tr>
         ${allZ.map(z => { const s2 = sizes[z] || 0, k = st[z]; return `<tr><td><b>${z === "–" ? (ar ? "غير معروف" : "not known") : esc(z)}</b></td><td><div class="row" style="flex-wrap:nowrap;gap:8px"><span style="min-width:16px">${s2 || ""}</span><div class="bt" style="flex:1;position:relative;height:8px;background:var(--surface2);border-radius:4px">${s2 ? `<i style="display:block;height:100%;width:${s2 / mx * 100}%;background:var(--ink);border-start-end-radius:4px;border-end-end-radius:4px"></i>` : ""}</div></div></td><td style="text-align:end;font-weight:700;color:var(--${!CATALOG ? "muted" : k ? "ink" : "bad"})">${!CATALOG || z === "–" ? "–" : k ? k : (ar ? "نفد" : "none left")}</td></tr>`; }).join("")}</table></div>
-      ${CATALOG ? `<p class="small muted">${ar ? "المخزون كما في ملف" : "Stock as in the item file of"} ${fmtD(CATALOG.date)}.</p>` : `<p class="small muted">${ar ? "ارفع ملف توفر الأصناف لرؤية المخزون." : "Upload the item availability file to see stock here."}</p>`}
+      ${CATALOG ? `<p class="small muted">${stockLabel(live, ar)}.</p>` : `<p class="small muted">${ar ? "ارفع ملف توفر الأصناف لرؤية المخزون." : "Upload the item availability file to see stock here."}</p>`}
       ${days.length > 1 ? `<div class="sec"><h3>${ar ? "يوماً بيوم" : "Day by day"}</h3></div><div class="card">${barRows(days.map(x => ({ l: `${DOW[parseD(x.x).getDay()]} ${fmtD(x.x)}`, v: x.q, txt: String(x.q) })))}</div>` : ""}
       <p class="small muted num">${ar ? "الأكواد:" : "Item codes:"} ${Object.entries(codes).map(([c, n]) => `${esc(c)} ×${n}`).join(" · ")}</p></div>`;
     $("#msX", m).onclick = () => m.remove(); };
-  document.body.appendChild(m); draw(); if (!CATALOG && S.cfg && S.cfg.catalogDate) loadCatalog().then(() => { if (m.isConnected) draw(); });
+  document.body.appendChild(m); draw(); if (S.cfg && S.cfg.catalogDate) stockMonths().then(() => { if (m.isConnected) draw(); });
 }
 HOOKS.sales = app => {
   const keepY = fn => { fn(); const y = window.scrollY; render(); window.scrollTo(0, y); };
